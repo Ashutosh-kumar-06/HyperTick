@@ -1,0 +1,92 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: swarm
+      RABBITMQ_DEFAULT_PASS: swarm_secret
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: trading_swarm
+
+  orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      RABBITMQ_URL: amqp://swarm:swarm_secret@rabbitmq:5672/
+      REDIS_URL: redis://redis:6379/0
+      MONGODB_URL: mongodb://mongodb:27017/trading_swarm
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o}
+      LLM_TEMPERATURE: "0.0"
+      ENABLE_CRDT_SYNC: ${ENABLE_CRDT_SYNC:-false}
+      CRDT_NODE_ID: ${CRDT_NODE_ID:-orchestrator-1}
+    volumes:
+      - ./data:/app/data:ro
+    profiles:
+      - full
+
+  consumer:
+    build:
+      context: .
+      dockerfile: consumer/Dockerfile
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_URL: amqp://swarm:swarm_secret@rabbitmq:5672/
+      DOCKER_HOST: unix:///var/run/docker.sock
+      WORKER_IMAGE: trading-swarm-worker:latest
+      WORKER_TIMEOUT_SEC: "5"
+      WORKER_CPU: "0.5"
+      WORKER_MEMORY: "512m"
+      CONSUMER_INSTANCE_ID: ${CONSUMER_INSTANCE_ID:-consumer-1}
+      RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-1}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/data:ro
+      - worker_scratch:/tmp/swarm_workers
+    profiles:
+      - full
+
+volumes:
+  rabbitmq_data:
+  redis_data:
+  mongo_data:
+  worker_scratch:

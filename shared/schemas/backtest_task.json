@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BacktestTask",
+  "type": "object",
+  "required": ["task_id", "strategy_source", "dataset_id", "metadata"],
+  "properties": {
+    "task_id": { "type": "string", "format": "uuid" },
+    "iteration": { "type": "integer", "minimum": 0 },
+    "strategy_source": { "type": "string" },
+    "strategy_filename": { "type": "string", "default": "strategy.cpp" },
+    "dataset_id": { "type": "string" },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "hypothesis": { "type": "string" },
+        "symbols": { "type": "array", "items": { "type": "string" } },
+        "commission_bps": { "type": "number", "default": 1.0 },
+        "slippage_bps": { "type": "number", "default": 0.5 }
+      }
+    }
+  }
+}

@@ -1,0 +1,32 @@
+# Cluster overlay — scale stateless consumer workers across EC2 nodes.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.cluster.yml up --scale consumer=10
+
+services:
+  rabbitmq:
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  consumer:
+    deploy:
+      replicas: 5
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+    environment:
+      CONSUMER_INSTANCE_ID: ${HOSTNAME:-consumer}
+      RABBITMQ_PREFETCH: "1"
+    # EC2 hosts mounting Docker socket for DooD sandbox spawning
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/data:ro
+      - worker_scratch:/tmp/swarm_workers
+
+  orchestrator:
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      CRDT_NODE_ID: ${CRDT_NODE_ID:-orchestrator-1}
+      ENABLE_CRDT_SYNC: "true"
