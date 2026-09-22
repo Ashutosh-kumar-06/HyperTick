@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import axios from 'axios';
 import { Play, Activity, Terminal, BrainCircuit, BarChart3 } from 'lucide-react';
 import './index.css';
 
 interface OrchestratorResponse {
   task_id: string;
-  iteration: int;
-  max_iterations: int;
+  iteration: number;
+  max_iterations: number;
   user_prompt: string;
   dataset_id: string;
   hypothesis: string;
@@ -46,8 +46,8 @@ function App() {
   return (
     <div className="app-container animate-fade-in">
       <header className="header">
-        <h1>Autonomous Swarm</h1>
-        <p>AI-Driven Quantitative Backtesting Orchestrator</p>
+        <h1>HyperTick</h1>
+        <p>Distributed Microsecond Backtesting & Simulation Engine</p>
       </header>
 
       {/* Input Section */}

@@ -1,0 +1,86 @@
+<h3>41. Why should we use multi-stage Docker builds for our C++ execution engine?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Understanding of image size reduction, separating build tools from runtime environment, and reducing attack surface.</p>
+</div>
+<p>In our trading system, the C++ execution engine needs compilers like <code>g++</code>, build systems like <code>CMake</code>, and heavy development libraries to compile the trading strategies. If we include all of these in our final Docker image, the image becomes massive and, more importantly, insecure.</p>
+<p><strong>Analogy:</strong> Imagine building a custom sports car (your C++ code). A multi-stage build is like using a huge factory (the <em>build stage</em>) full of heavy machinery, welders, and cranes to build the car. Once the car is finished, you don't drive the whole factory onto the race track. You just drive the car out (the <em>runtime stage</em>).</p>
+<p>By using multi-stage builds, we copy only the compiled binary and necessary runtime libraries into a fresh, minimal base image (like Alpine or minimal Debian). This dramatically reduces the image size, speeding up deployments. It also improves security: if an attacker manages to compromise the container, they won't find a compiler inside to build malicious tools.</p>
+
+<h3>42. How does setting <code>network=none</code> in Docker improve the security of our backtesting swarm?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Knowledge of Docker networking, isolation of untrusted code, and preventing data exfiltration.</p>
+</div>
+<p>When running user-submitted or dynamically loaded trading strategies (via <code>dlopen</code>), we are executing untrusted code. A malicious strategy might try to open a socket to send our proprietary market data or strategy logic to an external server.</p>
+<p><strong>Analogy:</strong> Think of <code>network=none</code> as putting a suspect in an interrogation room with no windows, no phones, and no internet connection. They can think and write things down on a piece of paper (return results via local files or shared memory), but they absolutely cannot call their friends on the outside.</p>
+<p>By running the sandbox container with <code>--network=none</code>, Docker disables the network namespace entirely for that container (except for the loopback interface). This guarantees that the C++ strategy cannot establish TCP/UDP connections to the outside world, completely neutralizing network-based data exfiltration attacks.</p>
+
+<h3>43. Why is it important to enforce CPU and Memory cgroups (resource limits) on our trading containers?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Understanding of Linux Control Groups (cgroups), preventing the "noisy neighbor" problem, and mitigating Denial of Service (DoS) risks.</p>
+</div>
+<p>In a swarm architecture, multiple containers run on the same host machines. If one container runs a poorly written strategy (like an infinite loop or a massive memory allocation), it could consume 100% of the host's CPU or RAM, starving the other containers. This is known as the "noisy neighbor" problem.</p>
+<p><strong>Analogy:</strong> Imagine an all-you-can-eat buffet where one person takes all the food, leaving nothing for everyone else. Resource limits act like a waiter who gives each person a specific portion size. No matter how hungry one person is, they can't take someone else's food.</p>
+<p>By setting flags like <code>--cpus="1.0"</code> and <code>--memory="512m"</code>, Docker configures the underlying Linux cgroups. If a strategy tries to use too much memory, the Out-Of-Memory (OOM) killer will terminate that specific container, leaving the rest of the swarm and the orchestrator running smoothly.</p>
+
+<h3>44. How does the Principle of Least Privilege apply to Docker containers via non-root users?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Understanding of user namespaces, dropping root privileges inside containers, and mitigating container breakout vulnerabilities.</p>
+</div>
+<p>By default, processes inside a Docker container run as the <code>root</code> user. While Docker provides isolation, a vulnerability in the container runtime or the Linux kernel could allow a process running as root inside the container to break out and gain root access on the host machine.</p>
+<p><strong>Analogy:</strong> Giving an employee the master key to the office building (root) when they only need the key to their specific cubicle (non-root). If they turn out to be malicious, the master key lets them ruin the whole company.</p>
+<p>To enforce the Principle of Least Privilege, we create a dedicated user inside our Dockerfile (e.g., <code>RUN useradd -m quantuser</code>) and use the <code>USER quantuser</code> directive. Now, even if the trading strategy tries to execute malicious system calls or exploit a bug, it does so as an unprivileged user, vastly reducing the risk of a successful host takeover.</p>
+
+<h3>45. What is a read-only filesystem mount in Docker, and why use it for running C++ strategies?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Securing the container filesystem, preventing malware persistence, and utilizing <code>--read-only</code> flags.</p>
+</div>
+<p>A read-only filesystem prevents the containerized application from modifying its own code, installing new binaries, or tampering with system configurations. When executing untrusted C++ code via <code>dlopen</code>, we want to ensure the code cannot modify the environment.</p>
+<p><strong>Analogy:</strong> Think of it like giving a student a laminated textbook. They can read it, learn from it, and take the test, but they cannot scribble fake answers or tear pages out of the book for the next student to see.</p>
+<p>We run the container with <code>--read-only</code>. If the strategy needs to write logs or temporary data, we can mount a specific, temporary <code>tmpfs</code> volume (like <code>--tmpfs /tmp</code>) which resides in memory and disappears when the container exits. This guarantees a clean, immutable state for every backtest.</p>
+
+<h3>46. How do we securely sandbox arbitrary C++ code executed via <code>dlopen</code>?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Comprehensive defense-in-depth strategy combining namespaces, cgroups, seccomp, and unprivileged execution.</p>
+</div>
+<p>Using <code>dlopen</code> loads a shared library (<code>.so</code> file) directly into our engine's memory space. If that library contains malicious code, it has full control over the engine process. Since we can't fully sandbox the code from the engine itself once loaded, we must sandbox the <em>entire container</em>.</p>
+<p><strong>Analogy:</strong> If you invite a stranger (untrusted code) to drive your car (the engine), you can't stop them from steering. Instead, you put the car on a closed, padded track (the container sandbox) with a remote kill switch, so no matter how badly they drive, they can't crash into the real world.</p>
+<p>To achieve this, we use a defense-in-depth approach:
+<ul>
+  <li><strong>Network isolation:</strong> <code>--network=none</code> prevents data theft.</li>
+  <li><strong>Resource limits:</strong> Memory/CPU constraints prevent DoS.</li>
+  <li><strong>Least privilege:</strong> Running as a non-root user.</li>
+  <li><strong>System call filtering:</strong> Applying a strict Docker <code>seccomp</code> profile to block dangerous system calls (like <code>ptrace</code> or <code>execve</code>).</li>
+</ul>
+</p>
+
+<h3>47. How should our orchestrator handle a container that crashes with a Segmentation Fault (exit code 139)?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Understanding of POSIX signals (SIGSEGV), container exit codes, and fault tolerance in distributed systems.</p>
+</div>
+<p>Because C++ allows direct memory manipulation, poorly written strategy code can easily dereference a null pointer or access out-of-bounds arrays, causing a Segmentation Fault. In Linux, this triggers a <code>SIGSEGV</code> (signal 11). Docker adds 128 to the signal number to create the exit code, resulting in 128 + 11 = 139.</p>
+<p><strong>Analogy:</strong> If a race car driver (the C++ code) takes a turn too fast and crashes into the wall (segfault), the race control center (LangGraph orchestrator) shouldn't panic and cancel the whole event. It should tow the car away, record a "Did Not Finish" (DNF), and continue the race.</p>
+<p>When the RabbitMQ consumer detects that a worker container exited with code 139, it shouldn't crash the orchestrator. Instead, it should catch the error, log "Strategy execution failed due to memory violation", write this failure status to MongoDB, and acknowledge (ack) the RabbitMQ message so it isn't endlessly retried.</p>
+
+<h3>48. How do we protect the backtesting swarm from an infinite loop in a user's strategy?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Implementation of hard timeouts, container lifecycle management, and protecting system throughput.</p>
+</div>
+<p>A strategy containing a <code>while(true)</code> loop will never finish. Even with CPU limits (cgroups), the container will sit there forever, holding onto its RabbitMQ message and consuming a worker slot in the swarm. If enough of these accumulate, the entire swarm will stall.</p>
+<p><strong>Analogy:</strong> Giving a student a math test where one question is impossible to solve. If you don't give them a time limit, they will sit at their desk forever. You need a proctor to ring a bell and take the paper away.</p>
+<p>We solve this by enforcing a hard timeout at the orchestrator or worker level. For example, if a backtest shouldn't take longer than 5 minutes, a watchdog process monitors the execution time. If it exceeds 5 minutes, the system aggressively kills the container (e.g., using <code>docker kill</code> which sends <code>SIGKILL</code>), logs a timeout error to MongoDB, and frees up the worker slot.</p>
+
+<h3>49. What does it mean to drop Linux capabilities in Docker (using <code>--cap-drop=ALL</code>), and why is it useful?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Advanced Linux security concepts, reducing root powers into granular capabilities, and hardening containers.</p>
+</div>
+<p>Traditionally in Linux, the <code>root</code> user has supreme power. However, modern Linux breaks "root power" down into distinct permissions called <em>capabilities</em>. For example, <code>CAP_NET_ADMIN</code> allows modifying network interfaces, and <code>CAP_SYS_TIME</code> allows changing the system clock.</p>
+<p><strong>Analogy:</strong> Instead of giving the building manager a single master key that opens everything (traditional root), you give them a smart badge. You can program the badge to open the utility room but deny access to the vault (capabilities).</p>
+<p>By default, Docker grants a restricted list of capabilities. However, our C++ execution engine only needs to crunch numbers; it doesn't need to change system times, mount filesystems, or modify routing tables. By passing <code>--cap-drop=ALL</code>, we strip away all these extra powers. Even if an attacker finds a way to become root inside the container, they will be a "toothless" root with no real capabilities to exploit the host.</p>
+
+<h3>50. How should we manage sensitive credentials (like MongoDB passwords or API keys) in our Dockerized swarm?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Avoiding hardcoded secrets, understanding environment variables vs. secret managers, and secure DevOps practices.</p>
+</div>
+<p>Hardcoding passwords in source code or Dockerfiles is a massive security risk because anyone who can read the code or inspect the Docker image can steal the credentials.</p>
+<p><strong>Analogy:</strong> Hardcoding a password is like writing your ATM PIN in sharpie on the back of your debit card. Storing it securely is like memorizing the PIN or keeping it locked in a safe.</p>
+<p>For our swarm, we should never bake secrets into the Docker image. Instead, we use a secure secret management system (like Docker Secrets, HashiCorp Vault, or AWS Secrets Manager). During deployment, these tools securely inject the secrets into the running containers as in-memory environment variables or temporary files in a <code>tmpfs</code>. This ensures that our MongoDB connection strings and Redis passwords remain safe and easily rotatable without rebuilding our application.</p>

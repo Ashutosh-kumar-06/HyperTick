@@ -19,7 +19,7 @@ struct EngineConfig {
     double slippage_bps{0.5};
     size_t batch_size{ColumnarTickStore::kDefaultBatchSize};
     /// Sample per-tick latency every N ticks (0 = disable sampling for max throughput).
-    size_t latency_sample_stride{0};
+    size_t latency_sample_stride{1000};
     bool use_builtin_noop{false};
 };
 

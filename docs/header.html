@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Autonomous Quantitative Trading Backtesting Swarm — Ultimate Beginner's Deep-Dive</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  
+  :root {
+    --bg: #ffffff;
+    --text: #1a1a2e;
+    --heading: #0f0f23;
+    --accent: #2563eb;
+    --accent2: #7c3aed;
+    --border: #e2e8f0;
+    --code-bg: #f8fafc;
+    --table-header: #f1f5f9;
+    --sidebar: #f8fafc;
+    --analogy-bg: #fffbeb;
+    --analogy-border: #f59e0b;
+    --beginner-bg: #f0fdf4;
+    --beginner-border: #22c55e;
+    --concept-bg: #eff6ff;
+    --concept-border: #3b82f6;
+  }
+  
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.8;
+    font-size: 15px;
+    max-width: 950px;
+    margin: 0 auto;
+    padding: 60px 40px;
+  }
+  
+  h1 {
+    font-size: 2.6rem;
+    font-weight: 800;
+    color: var(--heading);
+    border-bottom: 4px solid var(--accent);
+    padding-bottom: 16px;
+    margin-bottom: 12px;
+  }
+  
+  h2 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin-top: 64px;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--border);
+    page-break-after: avoid;
+  }
+  
+  h3 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--accent2);
+    margin-top: 48px;
+    margin-bottom: 16px;
+    page-break-after: avoid;
+  }
+  
+  h4 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--heading);
+    margin-top: 32px;
+    margin-bottom: 12px;
+  }
+  
+  p { margin-bottom: 16px; }
+  
+  ul, ol { margin-bottom: 20px; padding-left: 28px; }
+  li { margin-bottom: 8px; }
+  
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.9em;
+    background: var(--code-bg);
+    padding: 3px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  
+  pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 20px 24px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin-bottom: 24px;
+    font-size: 0.9em;
+    line-height: 1.6;
+    page-break-inside: avoid;
+  }
+  
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+    font-size: 1em;
+  }
+  
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 32px;
+    font-size: 0.95em;
+    page-break-inside: avoid;
+  }
+  
+  th {
+    background: var(--table-header);
+    font-weight: 600;
+    text-align: left;
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+  }
+  
+  td {
+    padding: 10px 16px;
+    border: 1px solid var(--border);
+    vertical-align: top;
+  }
+  
+  tr:nth-child(even) { background: #fafbfc; }
+  
+  /* Subagent Specific Classes */
+  .analogy {
+    background: var(--analogy-bg);
+    border-left: 5px solid var(--analogy-border);
+    padding: 20px 24px;
+    margin: 24px 0;
+    border-radius: 0 8px 8px 0;
+    font-style: italic;
+  }
+  .analogy::before {
+    content: "💡 Analogy: ";
+    font-weight: 700;
+    font-style: normal;
+    color: var(--analogy-border);
+  }
+  
+  .code-explanation {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    padding: 24px;
+    margin: 24px 0;
+    border-radius: 8px;
+  }
+  
+  .key-concept {
+    background: var(--concept-bg);
+    border-left: 5px solid var(--concept-border);
+    padding: 20px 24px;
+    margin: 24px 0;
+    border-radius: 0 8px 8px 0;
+  }
+  .key-concept::before {
+    content: "🔑 Key Concept: ";
+    font-weight: 700;
+    color: var(--concept-border);
+  }
+  
+  .beginner-note {
+    background: var(--beginner-bg);
+    border-left: 5px solid var(--beginner-border);
+    padding: 20px 24px;
+    margin: 24px 0;
+    border-radius: 0 8px 8px 0;
+  }
+  .beginner-note::before {
+    content: "🌱 Beginner Tip: ";
+    font-weight: 700;
+    color: var(--beginner-border);
+  }
+  
+  .subtitle {
+    font-size: 1.3rem;
+    color: #64748b;
+    margin-bottom: 8px;
+  }
+  
+  .meta {
+    font-size: 1rem;
+    color: #94a3b8;
+    margin-bottom: 48px;
+  }
+  
+  .toc {
+    background: var(--sidebar);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 40px;
+    margin-bottom: 64px;
+    page-break-inside: avoid;
+  }
+  
+  .toc h3 { margin-top: 0; color: var(--heading); }
+  .toc ol { counter-reset: toc; padding-left: 0; list-style: none; }
+  .toc li { margin-bottom: 8px; }
+  .toc a { color: var(--text); text-decoration: none; }
+  .toc a:hover { color: var(--accent); text-decoration: underline; }
+  
+  hr {
+    border: none;
+    border-top: 2px solid var(--border);
+    margin: 64px 0;
+  }
+  
+  @media print {
+    body { font-size: 10pt; padding: 0; max-width: none; background: white; }
+    h2 { page-break-before: always; }
+    h2:first-of-type { page-break-before: auto; }
+    pre { font-size: 8pt; white-space: pre-wrap; word-break: break-all; }
+    .toc { page-break-after: always; }
+    .analogy, .beginner-note, .key-concept, .code-explanation {
+      page-break-inside: avoid;
+    }
+  }
+</style>
+</head>
+<body>
+
+<h1>Autonomous Quantitative Trading Backtesting Swarm</h1>
+<p class="subtitle"><strong>The Ultimate Beginner's Deep-Dive Guide</strong></p>
+<p class="meta">Author: Ashutosh Kumar &nbsp;|&nbsp; Version 2.0 (Expanded Edition) &nbsp;|&nbsp; Comprehensive Tutorial</p>
+
+<div class="toc">
+<h3>Table of Contents</h3>
+<ol>
+<li><a href="#section-1-introduction-what-this-project-does">Section 1: Introduction & What This Project Does</a></li>
+<li><a href="#section-2-prerequisites-background-concepts">Section 2: Prerequisites & Background Concepts</a></li>
+<li><a href="#section-3-system-architecture-the-big-picture">Section 3: System Architecture — The Big Picture</a></li>
+<li><a href="#section-4-the-python-orchestrator-deep-dive-part-1-config-llm-state">Section 4: The Python Orchestrator — Deep Dive (Part 1)</a></li>
+<li><a href="#section-5-the-python-orchestrator-deep-dive-part-2-the-graph-agent-nodes">Section 5: The Python Orchestrator — Deep Dive (Part 2)</a></li>
+<li><a href="#section-6-the-message-broker-distributed-state-deep-dive">Section 6: The Message Broker & Distributed State</a></li>
+<li><a href="#section-7-the-c-worker-engine-complete-deep-dive">Section 7: The C++ Worker Engine — Complete Deep Dive</a></li>
+<li><a href="#section-8-the-consumer-docker-sandbox-execution">Section 8: The Consumer — Docker Sandbox Execution</a></li>
+<li><a href="#section-9-the-react-web-ui">Section 9: The React Web UI</a></li>
+<li><a href="#section-10-infrastructure-docker-compose">Section 10: Infrastructure & Docker Compose</a></li>
+<li><a href="#section-11-security-model-protecting-against-malicious-ai-code">Section 11: Security Model</a></li>
+<li><a href="#section-12-data-pipeline">Section 12: Data Pipeline</a></li>
+<li><a href="#section-13-performance-deep-dive">Section 13: Performance Deep Dive</a></li>
+<li><a href="#section-14-end-to-end-walkthrough">Section 14: End-to-End Walkthrough</a></li>
+<li><a href="#section-15-glossary">Section 15: Glossary</a></li>
+<li><a href="#section-16-sde-interview-questions">Section 16: SDE Interview Questions & Answers</a></li>
+</ol>
+</div>
+
+<hr>

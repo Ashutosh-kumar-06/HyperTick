@@ -5,8 +5,8 @@
 
 namespace swarm {
 
-OrderMatchingSimulator::OrderMatchingSimulator(double commission_bps, double slippage_bps)
-    : commission_bps_(commission_bps), slippage_bps_(slippage_bps) {}
+OrderMatchingSimulator::OrderMatchingSimulator(double commission_bps, double slippage_bps, double initial_capital)
+    : commission_bps_(commission_bps), slippage_bps_(slippage_bps), cash_(initial_capital) {}
 
 double OrderMatchingSimulator::apply_slippage(Side side, double price) const {
     const double factor = slippage_bps_ / 10'000.0;

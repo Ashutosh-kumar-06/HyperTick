@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Autonomous Quantitative Trading Backtesting Swarm — Complete Technical Deep-Dive</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+  
+  :root {
+    --bg: #ffffff;
+    --text: #1a1a2e;
+    --heading: #0f0f23;
+    --accent: #2563eb;
+    --accent2: #7c3aed;
+    --border: #e2e8f0;
+    --code-bg: #f8fafc;
+    --table-header: #f1f5f9;
+    --sidebar: #f8fafc;
+  }
+  
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.7;
+    font-size: 14px;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 32px;
+  }
+  
+  h1 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: var(--heading);
+    border-bottom: 3px solid var(--accent);
+    padding-bottom: 12px;
+    margin-bottom: 8px;
+  }
+  
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin-top: 48px;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+    page-break-after: avoid;
+  }
+  
+  h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--accent2);
+    margin-top: 32px;
+    margin-bottom: 12px;
+    page-break-after: avoid;
+  }
+  
+  h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--heading);
+    margin-top: 20px;
+    margin-bottom: 8px;
+  }
+  
+  p { margin-bottom: 12px; }
+  
+  ul, ol { margin-bottom: 12px; padding-left: 24px; }
+  li { margin-bottom: 4px; }
+  
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88em;
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  
+  pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 16px 20px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin-bottom: 16px;
+    font-size: 0.85em;
+    line-height: 1.5;
+    page-break-inside: avoid;
+  }
+  
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+  }
+  
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+    font-size: 0.92em;
+    page-break-inside: avoid;
+  }
+  
+  th {
+    background: var(--table-header);
+    font-weight: 600;
+    text-align: left;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+  }
+  
+  td {
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    vertical-align: top;
+  }
+  
+  tr:nth-child(even) { background: #fafbfc; }
+  
+  .subtitle {
+    font-size: 1.1rem;
+    color: #64748b;
+    margin-bottom: 4px;
+  }
+  
+  .meta {
+    font-size: 0.9rem;
+    color: #94a3b8;
+    margin-bottom: 32px;
+  }
+  
+  .toc {
+    background: var(--sidebar);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 40px;
+    page-break-inside: avoid;
+  }
+  
+  .toc h3 { margin-top: 0; color: var(--heading); }
+  .toc ol { counter-reset: toc; padding-left: 0; list-style: none; }
+  .toc li { counter-increment: toc; margin-bottom: 6px; }
+  .toc li::before { content: counter(toc) ". "; font-weight: 600; color: var(--accent); }
+  .toc a { color: var(--text); text-decoration: none; }
+  .toc a:hover { color: var(--accent); }
+  
+  .arch-diagram {
+    background: #0f172a;
+    color: #94a3b8;
+    padding: 20px 24px;
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78em;
+    line-height: 1.4;
+    overflow-x: auto;
+    white-space: pre;
+    margin-bottom: 20px;
+  }
+  
+  .highlight { color: #60a5fa; }
+  .highlight2 { color: #a78bfa; }
+  .highlight3 { color: #34d399; }
+  
+  hr {
+    border: none;
+    border-top: 2px solid var(--border);
+    margin: 40px 0;
+  }
+  
+  @media print {
+    body { font-size: 11pt; padding: 0; max-width: none; }
+    h2 { page-break-before: always; }
+    h2:first-of-type { page-break-before: auto; }
+    pre { font-size: 8pt; }
+    .toc { page-break-after: always; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Autonomous Quantitative Trading Backtesting Swarm</h1>
+<p class="subtitle"><strong>Complete Technical Deep-Dive</strong></p>
+<p class="meta">Author: Ashutosh Kumar &nbsp;|&nbsp; Version 1.0 — July 2026 &nbsp;|&nbsp; ~2,500 lines Python + ~1,200 lines C++</p>
+
+<div class="toc">
+<h3>Table of Contents</h3>
+<ol>
+<li><a href="#s1">Executive Summary</a></li>
+<li><a href="#s2">Why Each Technology Was Chosen</a></li>
+<li><a href="#s3">System Architecture</a></li>
+<li><a href="#s4">The Orchestrator (Python) — Every Function Explained</a></li>
+<li><a href="#s5">The C++ Worker Engine — Every Function Explained</a></li>
+<li><a href="#s6">The Consumer (Task Runner)</a></li>
+<li><a href="#s7">Infrastructure &amp; Deployment</a></li>
+<li><a href="#s8">The React Web UI</a></li>
+<li><a href="#s9">Data Pipeline</a></li>
+<li><a href="#s10">Security Model</a></li>
+<li><a href="#s11">Performance Optimizations</a></li>
+<li><a href="#s12">End-to-End Data Flow (Step by Step)</a></li>
+<li><a href="#s13">Complete File Index</a></li>
+</ol>
+</div>
+
+<h2 id="s1">1. Executive Summary</h2>
+
+<p>This project is an <strong>autonomous AI-powered quantitative trading research platform</strong>. It uses large language models (LLMs) to automatically:</p>
+
+<ol>
+<li><strong>Ideate</strong> a trading strategy hypothesis from a natural language prompt</li>
+<li><strong>Generate</strong> production-grade C++ code implementing that strategy</li>
+<li><strong>Compile</strong> the C++ code on-the-fly inside a Docker sandbox</li>
+<li><strong>Backtest</strong> the strategy against millions of historical market ticks at microsecond latency</li>
+<li><strong>Evaluate</strong> the results against risk KPIs (Sharpe Ratio, Max Drawdown, Latency)</li>
+<li><strong>Self-correct</strong> by feeding failures back to the AI coder in a reflection loop</li>
+</ol>
+
+<h3>The Core Innovation</h3>
+<p>Most backtesting frameworks are either <em>fast but manual</em> (C++ engines where humans write every strategy) or <em>AI-powered but slow</em> (Python-based LLM tools with toy backtesting). This project combines both: an <strong>AI brain</strong> (LangGraph multi-agent orchestrator) generates strategies, while a <strong>high-performance C++ engine</strong> (with AVX2 SIMD and Apache Arrow) executes them at <strong>2,000,000+ ticks per second</strong>.</p>
+
+<hr>
+
+<h2 id="s2">2. Why Each Technology Was Chosen</h2>
+
+<h3>2.1 Why Apache Arrow?</h3>
+<p><strong>Problem:</strong> Financial tick data is massive. A single day of SPY tick data can be 50+ million rows. Loading this row-by-row is extremely slow.</p>
+
+<table>
+<tr><th>Feature</th><th>Benefit</th></tr>
+<tr><td><strong>Columnar format</strong></td><td>Fields (bid, ask, last, volume) are stored in contiguous arrays. The CPU only loads the columns it needs.</td></tr>
+<tr><td><strong>Memory-mapped I/O</strong></td><td>Arrow files are <code>mmap()</code>-ed directly from disk. The OS pages data on-demand — no explicit read/parse step.</td></tr>
+<tr><td><strong>Zero-copy</strong></td><td><code>ColumnarTickStore</code> reads raw pointers directly from Arrow's buffers (<code>raw_values()</code>). Literally zero data copying.</td></tr>
+<tr><td><strong>Language-agnostic</strong></td><td>Python generates the <code>.arrow</code> file; C++ reads it. No serialization overhead.</td></tr>
+<tr><td><strong>Cache-friendly</strong></td><td>Iterating <code>bid[0], bid[1], bid[2]...</code> hits sequential memory, maximizing L1/L2 cache utilization.</td></tr>
+</table>
+
+<h3>2.2 Why Redis?</h3>
+<p><strong>Problem:</strong> The orchestrator needs fast, ephemeral state storage that persists across agent iterations.</p>
+
+<table>
+<tr><th>Feature</th><th>Benefit</th></tr>
+<tr><td><strong>Sub-millisecond latency</strong></td><td>Agent state lookups happen inside the LLM prompt-building loop. Redis responds in &lt;1ms.</td></tr>
+<tr><td><strong>Sliding window lists</strong></td><td><code>AgentMemoryCache</code> uses Redis lists (<code>RPUSH</code> + <code>LTRIM</code>) for bounded iteration history.</td></tr>
+<tr><td><strong>TTL expiration</strong></td><td>All keys expire after 24 hours. Old sessions clean themselves up.</td></tr>
+<tr><td><strong>Pub/Sub for CRDT sync</strong></td><td>In multi-node deployments, broadcasts CRDT state changes for conflict-free convergence.</td></tr>
+</table>
+
+<h3>2.3 Why RabbitMQ?</h3>
+<p><strong>Problem:</strong> The orchestrator needs to dispatch C++ jobs to workers across many machines with reliable delivery.</p>
+
+<table>
+<tr><th>Feature</th><th>Benefit</th></tr>
+<tr><td><strong>Durable queues</strong></td><td>Tasks persist on disk. Worker crashes don't lose tasks.</td></tr>
+<tr><td><strong>Direct exchange routing</strong></td><td>Cleanly separates request (<code>backtest.task</code>) and response (<code>backtest.result</code>) channels.</td></tr>
+<tr><td><strong>Prefetch = 1</strong></td><td>Fair work distribution — slow workers don't block others.</td></tr>
+<tr><td><strong>Manual ACK/NACK</strong></td><td>Prevents silent data loss on failures.</td></tr>
+<tr><td><strong>Horizontal scaling</strong></td><td><code>docker compose up --scale consumer=10</code> — RabbitMQ handles load-balancing.</td></tr>
+</table>
+
+<h3>2.4 Why LangGraph?</h3>
+<p><strong>Problem:</strong> Strategy generation requires a multi-step, cyclic workflow (research → code → evaluate → reflect → re-code).</p>
+
+<table>
+<tr><th>Feature</th><th>Benefit</th></tr>
+<tr><td><strong>StateGraph</strong></td><td>Workflow defined as a directed graph with typed state. Each node returns partial updates.</td></tr>
+<tr><td><strong>Conditional edges</strong></td><td><code>should_reflect()</code> decides: loop back to coder or terminate.</td></tr>
+<tr><td><strong>Immutable state</strong></td><td><code>iteration_log</code> uses <code>operator.add</code> for append-only semantics.</td></tr>
+<tr><td><strong>Composability</strong></td><td>Each agent is a standalone function — testable, swappable, extensible.</td></tr>
+</table>
+
+<h3>2.5 Why C++ for the Backtesting Engine?</h3>
+
+<table>
+<tr><th>Feature</th><th>Benefit</th></tr>
+<tr><td><strong>Raw pointer access</strong></td><td>No GC, no reference counting. Direct memory access to Arrow buffers.</td></tr>
+<tr><td><strong>AVX2 SIMD</strong></td><td>Processes 4 doubles simultaneously for Sharpe ratio and variance calculations.</td></tr>
+<tr><td><strong><code>dlopen()</code> plugin system</strong></td><td>AI-generated strategies compiled to <code>.so</code> and loaded at runtime. No interpreter overhead.</td></tr>
+<tr><td><strong>Deterministic latency</strong></td><td>No GC pauses. Per-tick latency measured in microseconds.</td></tr>
+</table>
+
+<h3>2.6 Why MongoDB?</h3>
+<p>Approved strategies need persistent storage. Document storage is a natural fit for heterogeneous records (nested hypotheses, variable metrics, raw C++ source).</p>
+
+<h3>2.7 Why Docker for Sandboxing?</h3>
+
+<table>
+<tr><th>Feature</th><th>Benefit</th></tr>
+<tr><td><code>network=none</code></td><td>Zero network access. Cannot exfiltrate data.</td></tr>
+<tr><td>Resource limits</td><td>0.5 CPU, 512MB RAM. Runaway strategies can't DoS the host.</td></tr>
+<tr><td>Non-root user</td><td>Runs as <code>sandbox</code> (UID 1000), not root.</td></tr>
+<tr><td>Ephemeral containers</td><td>Fresh container per backtest. No state leakage.</td></tr>
+<tr><td>Timeout enforcement</td><td>Container killed after 5s if it hangs.</td></tr>
+</table>
+
+<hr>
+
+<h2 id="s3">3. System Architecture</h2>
+
+<div class="arch-diagram"><span class="highlight">┌──────────────────────────────────────────────────────────────┐</span>
+<span class="highlight">│                      USER / WEB UI                           │</span>
+<span class="highlight">│                 React + Vite (Port 5173)                     │</span>
+<span class="highlight">└────────────────────────┬─────────────────────────────────────┘</span>
+                         │ HTTP POST /api/run
+                         ▼
+<span class="highlight2">┌──────────────────────────────────────────────────────────────┐</span>
+<span class="highlight2">│                   FastAPI Backend (Port 8000)                 │</span>
+<span class="highlight2">└────────────────────────┬─────────────────────────────────────┘</span>
+                         │ graph.invoke()
+                         ▼
+<span class="highlight2">┌──────────────────────────────────────────────────────────────┐</span>
+<span class="highlight2">│                LangGraph Orchestrator                         │</span>
+<span class="highlight2">│                                                               │</span>
+<span class="highlight2">│  ┌──────────┐    ┌────────┐    ┌───────────┐                  │</span>
+<span class="highlight2">│  │Researcher│───▶│ Coder  │───▶│ Evaluator │──┐               │</span>
+<span class="highlight2">│  │  (LLM)   │    │ (LLM)  │    │ (LLM+RMQ) │  │               │</span>
+<span class="highlight2">│  └──────────┘    └────────┘    └───────────┘  │               │</span>
+<span class="highlight2">│                       ▲    ┌─ if rejected ───┘               │</span>
+<span class="highlight2">│                       └────┘  (reflection loop)              │</span>
+<span class="highlight2">│                                                               │</span>
+<span class="highlight2">│  State: Redis (AgentMemoryCache + SwarmStateCRDT)             │</span>
+<span class="highlight2">└────────────────────────┬─────────────────────────────────────┘</span>
+                         │ Publish backtest_task (JSON)
+                         ▼
+┌──────────────────────────────────────────────────────────────┐
+│                  RabbitMQ Message Broker                       │
+│            Exchange: trading_swarm_exchange                    │
+│  Queue: backtest_tasks  ◄───► Queue: backtest_results         │
+└────────────────────────┬─────────────────────────────────────┘
+                         │ Consume task
+                         ▼
+<span class="highlight3">┌──────────────────────────────────────────────────────────────┐</span>
+<span class="highlight3">│                  Consumer (Python)                            │</span>
+<span class="highlight3">│  1. Compile strategy.cpp → strategy.so (Docker)              │</span>
+<span class="highlight3">│  2. Run swarm_worker dataset.arrow strategy.so (Docker)      │</span>
+<span class="highlight3">│  3. Parse JSON metrics, publish result                       │</span>
+<span class="highlight3">└────────────────────────┬─────────────────────────────────────┘</span>
+                         │ docker run (network=none)
+                         ▼
+<span class="highlight3">┌──────────────────────────────────────────────────────────────┐</span>
+<span class="highlight3">│            C++ Worker (Docker Sandbox)                        │</span>
+<span class="highlight3">│  ColumnarTickStore (Arrow mmap) → BacktestEngine (loop)      │</span>
+<span class="highlight3">│  → Strategy.so (dlopen) → OMS (slippage+comm)               │</span>
+<span class="highlight3">│  → SimdMetrics (AVX2 Sharpe/Drawdown)                        │</span>
+<span class="highlight3">└──────────────────────────────────────────────────────────────┘</span></div>
+
+<hr>
+
+<h2 id="s4">4. The Orchestrator (Python) — Every Function Explained</h2>
+
+<h3>4.1 Configuration — <code>config.py</code></h3>
+<p>Centralized configuration using Pydantic's <code>BaseSettings</code>. All values set via environment variables or <code>.env</code> file.</p>
+
+<table>
+<tr><th>Field</th><th>Default</th><th>Purpose</th></tr>
+<tr><td><code>rabbitmq_url</code></td><td><code>amqp://swarm:swarm_secret@localhost:5672/</code></td><td>RabbitMQ connection string</td></tr>
+<tr><td><code>redis_url</code></td><td><code>redis://localhost:6379/0</code></td><td>Redis connection string</td></tr>
+<tr><td><code>mongodb_url</code></td><td><code>mongodb://localhost:27017/trading_swarm</code></td><td>MongoDB connection string</td></tr>
+<tr><td><code>llm_provider</code></td><td><code>"openai"</code></td><td>LLM backend: openai, gemini, or groq</td></tr>
+<tr><td><code>llm_model</code></td><td><code>"gpt-4o"</code></td><td>Specific model to use</td></tr>
+<tr><td><code>llm_temperature</code></td><td><code>0.0</code></td><td>0 = deterministic, 1 = creative</td></tr>
+<tr><td><code>max_drawdown_pct</code></td><td><code>15.0</code></td><td>KPI: reject if drawdown > 15%</td></tr>
+<tr><td><code>max_latency_us</code></td><td><code>50.0</code></td><td>KPI: reject if avg latency > 50µs</td></tr>
+<tr><td><code>min_sharpe_ratio</code></td><td><code>1.0</code></td><td>KPI: reject if Sharpe < 1.0</td></tr>
+<tr><td><code>max_iterations</code></td><td><code>5</code></td><td>Max reflection loop iterations</td></tr>
+<tr><td><code>backtest_timeout_sec</code></td><td><code>30.0</code></td><td>Timeout waiting for worker result</td></tr>
+</table>
+
+<h3>4.2 LLM Factory — <code>llm_factory.py</code></h3>
+<p><strong><code>create_llm(settings) → BaseChatModel</code></strong>: Factory function that returns the correct LangChain chat model based on <code>llm_provider</code>. Uses lazy imports — if you're using Groq, the OpenAI package doesn't even need to be loaded.</p>
+
+<h3>4.3 State Schema — <code>state.py</code></h3>
+<p><strong><code>SwarmState</code></strong> is a TypedDict that flows through every node in the graph. Key detail: <code>iteration_log</code> uses <code>Annotated[list[str], operator.add]</code> for append-only semantics — each node's log entries accumulate, never overwrite.</p>
+
+<h3>4.4 Prompts — <code>prompts.py</code></h3>
+<p>Contains the full <code>StrategyInterface.hpp</code> header as a string (injected into the coder's prompt), plus system prompts for all three agents: <code>RESEARCHER_SYSTEM</code>, <code>CODER_SYSTEM</code>, <code>EVALUATOR_SYSTEM</code>.</p>
+
+<h3>4.5 The Graph — <code>graph.py</code></h3>
+<p><strong><code>build_graph(settings) → CompiledGraph</code></strong>: Builds <code>StateGraph(SwarmState)</code> with nodes: researcher → coder → evaluator → [conditional: coder | END]. Uses <code>functools.partial</code> to inject settings.</p>
+
+<h3>4.6 Researcher Node — <code>nodes/researcher.py</code></h3>
+<p><strong><code>researcher_node(state, settings) → dict</code></strong>: Generates a UUID task_id, invokes LLM with the user's prompt, parses response into <code>StrategyHypothesis</code> (falls back to wrapping raw text), saves to Redis CRDT.</p>
+
+<h3>4.7 Coder Node — <code>nodes/coder.py</code></h3>
+<p><strong><code>coder_node(state, settings) → dict</code></strong>: Loads iteration history from Redis, builds prompt with hypothesis + reflection notes + compiler errors, invokes LLM, strips markdown fences from output, saves to Redis.</p>
+<p><strong><code>_strip_fences(text) → str</code></strong>: Removes <code>```cpp</code> / <code>```</code> markers that LLMs sometimes add despite instructions.</p>
+
+<h3>4.8 Evaluator Node — <code>nodes/evaluator.py</code></h3>
+<p><strong><code>submit_and_evaluate_node(state, settings) → dict</code></strong>: Publishes C++ code to RabbitMQ, waits for result, checks KPIs (drawdown ≤ 15%, latency ≤ 50µs, Sharpe ≥ 1.0). If approved, saves to MongoDB.</p>
+<p><strong><code>should_reflect(state) → str</code></strong>: Returns <code>"end"</code> if approved or max iterations reached; <code>"coder"</code> to retry.</p>
+<p><strong><code>_wait_for_result(channel, task_id, timeout)</code></strong>: Polls RabbitMQ result queue every 250ms until matching result or timeout.</p>
+
+<h3>4.9 RabbitMQ Broker — <code>broker/rabbitmq.py</code></h3>
+<p>Declares exchange (<code>trading_swarm_exchange</code>), queues (<code>backtest_tasks</code>, <code>backtest_results</code>), and routing keys. All messages use <code>delivery_mode=2</code> (persistent).</p>
+
+<h3>4.10 Redis Cache — <code>broker/redis_cache.py</code></h3>
+<p><strong><code>AgentMemoryCache</code></strong>: Sliding-window iteration history per task (default 10 entries). <code>format_for_prompt()</code> renders history as text for LLM context window.</p>
+
+<h3>4.11 CRDT State — <code>broker/crdt_state.py</code></h3>
+<p>Three CRDT types for conflict-free distributed state:</p>
+<ul>
+<li><strong>LWWRegister</strong> (Last-Writer-Wins): Stores hypothesis, strategy_source, reflection_notes. Timestamp tiebreaking with node_id fallback.</li>
+<li><strong>ORSet</strong> (Observed-Remove Set): Stores iteration_log. UUID-tagged elements with tombstone removal.</li>
+<li><strong>GCounter</strong> (Grow-only Counter): Stores iteration_counter. Per-node counts merged via max.</li>
+</ul>
+<p><strong><code>SwarmStateCRDT</code></strong>: Redis-backed store with <code>merge_remote()</code>, <code>publish_for_sync()</code> (Pub/Sub broadcast), <code>subscribe_sync()</code> (one-shot peer merge).</p>
+
+<h3>4.12 FastAPI Backend — <code>api.py</code></h3>
+<p><code>POST /api/run</code>: Accepts prompt, dataset_id, max_iterations → invokes <code>graph.invoke()</code> → returns JSON result. <code>GET /api/health</code>: Returns status + LLM provider. CORS enabled for local dev.</p>
+
+<hr>
+
+<h2 id="s5">5. The C++ Worker Engine — Every Function Explained</h2>
+
+<h3>5.1 StrategyInterface — <code>StrategyInterface.hpp</code></h3>
+<p>The contract all AI-generated strategies implement: <code>on_init()</code>, <code>on_market(event) → signals</code>, <code>on_fill(fill)</code>, <code>finalize() → metrics</code>. Factory: <code>extern "C" create_strategy()</code> for <code>dlopen()</code>.</p>
+
+<h3>5.2 ColumnarTickStore — <code>ColumnarTickStore.hpp/.cpp</code></h3>
+<p>Memory-maps Arrow IPC file, stores raw <code>const double*</code> pointers to each column in <code>BatchView</code> structs.</p>
+<ul>
+<li><strong><code>tick_at(index)</code></strong>: Locates batch, reconstructs Tick from column pointers.</li>
+<li><strong><code>prefetch_batch(start, count)</code></strong>: Issues <code>__builtin_prefetch</code> every 64 elements for cache warmth.</li>
+<li><strong><code>locate(index)</code></strong>: Finds which batch contains a global index.</li>
+</ul>
+
+<h3>5.3 BacktestEngine — <code>BacktestEngine.hpp/.cpp</code></h3>
+<ul>
+<li><strong><code>load_strategy(lib_path)</code></strong>: <code>dlopen()</code> + <code>dlsym("create_strategy")</code> to load compiled strategy.</li>
+<li><strong><code>run()</code></strong>: Main event loop — processes ticks in batches of 4096 with next-batch prefetch. Per-tick: read tick → call strategy → process signals through OMS → deliver fills.</li>
+<li><strong><code>finalize_result()</code></strong>: Computes Sharpe (via SimdMetrics), drawdown, return, latency percentiles.</li>
+</ul>
+
+<h3>5.4 OrderMatchingSimulator — <code>OrderMatchingSimulator.hpp/.cpp</code></h3>
+<p><strong><code>process_signals()</code></strong>: Queues orders, matches market orders immediately with slippage, checks limit order marketability, applies commission, updates position/cash/equity curve.</p>
+
+<h3>5.5 SimdMetrics — <code>SimdMetrics.hpp</code></h3>
+<ul>
+<li><strong><code>sum()</code></strong>: AVX2 path processes 4 doubles per <code>_mm256_add_pd</code> instruction.</li>
+<li><strong><code>variance()</code></strong>: AVX2 <code>_mm256_fmadd_pd</code> for fused multiply-add of squared differences.</li>
+<li><strong><code>compute_sharpe()</code></strong>: Annualized with √(252×390).</li>
+<li><strong><code>compute_max_drawdown()</code></strong>: Running peak tracking.</li>
+</ul>
+
+<hr>
+
+<h2 id="s6">6. The Consumer (Task Runner)</h2>
+
+<h3>6.1 <code>main.py</code></h3>
+<p>Connects to RabbitMQ, listens on <code>backtest_tasks</code>, calls <code>SandboxRunner.run_backtest()</code>, publishes results to <code>backtest_results</code>. Manual ACK/NACK for reliability.</p>
+
+<h3>6.2 <code>sandbox.py</code> — Two-Phase Execution</h3>
+<p><strong>Phase 1 (Compile):</strong> Write <code>strategy.cpp</code> → <code>docker run --network none</code> → <code>g++ -O3 -shared -fPIC -std=c++20</code> → <code>strategy.so</code></p>
+<p><strong>Phase 2 (Execute):</strong> <code>docker run --network none --memory 512m --cpus 0.5</code> → <code>swarm_worker dataset.arrow strategy.so</code> → parse JSON from stdout</p>
+<p>Handles: compile_error, runtime_error, timeout, segfault (exit code 139).</p>
+
+<hr>
+
+<h2 id="s7">7. Infrastructure &amp; Deployment</h2>
+
+<h3><code>docker-compose.yml</code></h3>
+<p><strong>Always-on:</strong> RabbitMQ (3.13), Redis (7), MongoDB (7). <strong>Profile <code>full</code>:</strong> Orchestrator + Consumer.</p>
+
+<h3><code>docker-compose.cluster.yml</code></h3>
+<p>Override for EC2 scaling: <code>docker compose --scale consumer=10</code>.</p>
+
+<h3>Worker Dockerfile</h3>
+<p>Multi-stage: Builder (Ubuntu 24.04 + Arrow dev + g++-13 → compile) → Runtime (slim + Arrow runtime + g++-13 for on-the-fly compilation, runs as <code>sandbox</code> user).</p>
+
+<hr>
+
+<h2 id="s8">8. The React Web UI</h2>
+<p>Premium glassmorphic dashboard in <code>frontend/</code>. Dark mode with blur effects, gradient accents (blue→purple), Inter + JetBrains Mono typography, micro-animations. Components: Strategy Input, Agent Logs (color-coded), Generated C++ Code Viewer with approval badge.</p>
+
+<hr>
+
+<h2 id="s9">9. Data Pipeline</h2>
+<p><strong><code>generate_sample_data.py</code></strong>: Random walk simulator → 2M synthetic ticks → Arrow IPC file.</p>
+<p><strong><code>ingest_ticks.py</code></strong>: CSV/Parquet → Arrow IPC with content-hash for dedup.</p>
+
+<hr>
+
+<h2 id="s10">10. Security Model</h2>
+
+<table>
+<tr><th>Layer</th><th>Mechanism</th><th>Threat Mitigated</th></tr>
+<tr><td>Network isolation</td><td><code>network_mode="none"</code></td><td>Data exfiltration, C2 callbacks</td></tr>
+<tr><td>Resource limits</td><td>0.5 CPU, 512MB RAM</td><td>DoS, fork bombs</td></tr>
+<tr><td>Non-root execution</td><td><code>user="sandbox"</code></td><td>Privilege escalation</td></tr>
+<tr><td>Timeout</td><td>Container killed after 5s</td><td>Infinite loops</td></tr>
+<tr><td>Ephemeral</td><td>Fresh container per run</td><td>State leakage</td></tr>
+<tr><td>Read-only mounts</td><td>Dataset + .so as <code>:ro</code></td><td>Filesystem tampering</td></tr>
+</table>
+
+<hr>
+
+<h2 id="s11">11. Performance Optimizations</h2>
+
+<table>
+<tr><th>Technique</th><th>Component</th><th>Impact</th></tr>
+<tr><td>Memory-mapped I/O</td><td>ColumnarTickStore</td><td>Near-zero file open time</td></tr>
+<tr><td>Zero-copy columns</td><td>ColumnarTickStore</td><td>No <code>memcpy()</code> overhead</td></tr>
+<tr><td>SoA layout</td><td>ColumnarTickStore</td><td>Max cache line utilization</td></tr>
+<tr><td>Software prefetch</td><td>prefetch_batch()</td><td>~30-50% fewer cache misses</td></tr>
+<tr><td>Batch processing (4096)</td><td>BacktestEngine</td><td>L1/L2 cache warmth</td></tr>
+<tr><td>AVX2 SIMD sum</td><td>SimdMetrics</td><td>4× faster summation</td></tr>
+<tr><td>AVX2 SIMD variance</td><td>SimdMetrics</td><td>4× faster variance (FMA)</td></tr>
+<tr><td>Latency sampling</td><td>BacktestEngine</td><td>Removes chrono overhead</td></tr>
+<tr><td><code>dlopen()</code> plugins</td><td>BacktestEngine</td><td>Zero interpreter overhead</td></tr>
+<tr><td><code>-O3</code> compilation</td><td>compile_strategy.sh</td><td>Compiler auto-vectorization</td></tr>
+</table>
+
+<hr>
+
+<h2 id="s12">12. End-to-End Data Flow</h2>
+
+<ol>
+<li><strong>User</strong> types "Bollinger Band mean reversion" in React UI → POST /api/run</li>
+<li><strong>FastAPI</strong> calls <code>graph.invoke()</code></li>
+<li><strong>Researcher</strong> asks LLM → returns StrategyHypothesis → saves to Redis</li>
+<li><strong>Coder</strong> loads history from Redis → asks LLM → returns C++ source → saves to Redis</li>
+<li><strong>Evaluator</strong> publishes task to RabbitMQ → <strong>Consumer</strong> receives it</li>
+<li><strong>Consumer Phase 1</strong>: Compile in Docker (network=none) → strategy.so</li>
+<li><strong>Consumer Phase 2</strong>: Run in Docker sandbox → ColumnarTickStore mmap → BacktestEngine loop (2M ticks) → SimdMetrics → JSON stdout</li>
+<li><strong>Consumer</strong> publishes result to RabbitMQ</li>
+<li><strong>Evaluator</strong> receives result, checks KPIs → if failed, sets reflection notes → <code>should_reflect()</code> returns "coder"</li>
+<li><strong>Coder</strong> (iteration 2): Receives failure feedback → generates improved C++ → cycle repeats</li>
+<li>After approval or max iterations → result returned to FastAPI → JSON to React UI</li>
+</ol>
+
+<hr>
+
+<h2 id="s13">13. Complete File Index</h2>
+
+<h3>Orchestrator (<code>orchestrator/src/swarm_orchestrator/</code>)</h3>
+<table>
+<tr><th>File</th><th>Lines</th><th>Purpose</th></tr>
+<tr><td>config.py</td><td>27</td><td>Pydantic settings (env vars, KPI thresholds)</td></tr>
+<tr><td>cli.py</td><td>40</td><td>CLI entry point (swarm-run command)</td></tr>
+<tr><td>llm_factory.py</td><td>47</td><td>LLM factory (OpenAI / Gemini / Groq)</td></tr>
+<tr><td>graph.py</td><td>31</td><td>LangGraph state machine definition</td></tr>
+<tr><td>state.py</td><td>45</td><td>Data models (Hypothesis, Metrics, Outcome)</td></tr>
+<tr><td>prompts.py</td><td>45</td><td>LLM system prompts</td></tr>
+<tr><td>api.py</td><td>66</td><td>FastAPI REST wrapper</td></tr>
+<tr><td>nodes/researcher.py</td><td>47</td><td>Hypothesis generation agent</td></tr>
+<tr><td>nodes/coder.py</td><td>75</td><td>C++ code generation agent</td></tr>
+<tr><td>nodes/evaluator.py</td><td>157</td><td>KPI evaluation + reflection agent</td></tr>
+<tr><td>broker/rabbitmq.py</td><td>68</td><td>Message broker topology</td></tr>
+<tr><td>broker/redis_cache.py</td><td>38</td><td>Sliding-window iteration memory</td></tr>
+<tr><td>broker/crdt_state.py</td><td>202</td><td>CRDT distributed state</td></tr>
+</table>
+
+<h3>Worker (<code>worker/</code>)</h3>
+<table>
+<tr><th>File</th><th>Lines</th><th>Purpose</th></tr>
+<tr><td>StrategyInterface.hpp</td><td>75</td><td>Core C++ strategy interface</td></tr>
+<tr><td>ColumnarTickStore.hpp/.cpp</td><td>145</td><td>Zero-copy Arrow columnar store</td></tr>
+<tr><td>BacktestEngine.hpp/.cpp</td><td>210</td><td>Main event loop engine</td></tr>
+<tr><td>OrderMatchingSimulator.hpp/.cpp</td><td>130</td><td>OMS with slippage/commission</td></tr>
+<tr><td>SimdMetrics.hpp</td><td>105</td><td>AVX2 SIMD metrics computation</td></tr>
+<tr><td>NoOpStrategy.hpp</td><td>20</td><td>Benchmark no-op strategy</td></tr>
+<tr><td>main.cpp</td><td>45</td><td>Worker CLI entry point</td></tr>
+<tr><td>benchmark_main.cpp</td><td>45</td><td>Benchmark CLI entry point</td></tr>
+<tr><td>example_bollinger.cpp</td><td>85</td><td>Reference strategy plugin</td></tr>
+<tr><td>CMakeLists.txt</td><td>45</td><td>CMake build (C++20, AVX2, Arrow)</td></tr>
+</table>
+
+<h3>Consumer (<code>consumer/</code>)</h3>
+<table>
+<tr><th>File</th><th>Lines</th><th>Purpose</th></tr>
+<tr><td>main.py</td><td>65</td><td>RabbitMQ consumer + task handler</td></tr>
+<tr><td>sandbox.py</td><td>120</td><td>Docker sandbox runner</td></tr>
+<tr><td>config.py</td><td>15</td><td>Consumer settings</td></tr>
+</table>
+
+<hr>
+<p style="text-align:center; color:#94a3b8; font-size:0.9rem; margin-top:48px;">
+<em>This document covers every component, function, design decision, and technology choice in the Autonomous Quantitative Trading Backtesting Swarm.</em>
+</p>
+
+</body>
+</html>

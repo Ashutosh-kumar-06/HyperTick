@@ -1,0 +1,248 @@
+<h2>SECTION 3: System Architecture — The Big Picture</h2>
+
+<h3>The Blueprint of Our Trading Swarm</h3>
+
+<p>Before we dive into the code, let's look at the entire system from a bird's-eye view. Here is how all the pieces of our Autonomous Quantitative Trading Backtesting Swarm fit together:</p>
+
+<pre>
+  +----------------------+      +----------------------+      +-----------------------+
+  |                      |      |                      |      |                       |
+  |  You (The User)      +----->|  Python Orchestrator |<---->| Large Language Models |
+  |                      |      |  (The Brain / Boss)  |      | (GPT-4, Gemini, etc.) |
+  +----------------------+      +----------+-----------+      +-----------------------+
+                                           |
+                                           | Redis (Memory & Communication)
+                                           | RabbitMQ (Message Queue)
+                                           v
+                                +----------+-----------+
+                                |                      |
+                                |  Rust Evaluator      |
+                                |  (The Foreman)       |
+                                |                      |
+                                +----------+-----------+
+                                           |
+                                           | Subprocess execution
+                                           v
+                                +----------+-----------+
+                                |                      |
+                                |  C++ Trading Engine  |
+                                |  (The Factory Floor) |
+                                |                      |
+                                +----------------------+
+</pre>
+
+<h3>The Flow: A Story of a Strategy Idea</h3>
+
+<p>Imagine you just had a brilliant idea for a trading strategy: "Buy Apple stock when its 50-day moving average crosses above its 200-day moving average." Here is what happens when you type that into our system:</p>
+
+<ol>
+    <li><strong>The Order:</strong> You tell the <strong>Python Orchestrator</strong> your idea.</li>
+    <li><strong>The Brainstorming:</strong> The Orchestrator talks to the <strong>Large Language Models (LLMs)</strong> and says, "Hey, write me C++ code that implements this strategy." The LLM sends back the raw C++ code.</li>
+    <li><strong>The Handoff:</strong> The Orchestrator puts this C++ code into a secure envelope and drops it in a mailbox called <strong>RabbitMQ</strong>.</li>
+    <li><strong>The Foreman Steps In:</strong> The <strong>Rust Evaluator</strong> (which is constantly checking the mailbox) picks up the envelope. It compiles the C++ code and runs it through a massive historical market data simulation (the backtest).</li>
+    <li><strong>The Report Card:</strong> The Rust Evaluator writes down how much money the strategy made (or lost), the execution speed, and any errors. It puts this report card in <strong>Redis</strong> and tells the Orchestrator it's done.</li>
+</ol>
+
+<h3>Why Multiple Services? (Microservices vs. Monolith)</h3>
+
+<blockquote class="analogy">
+    <p><strong>Analogy:</strong> Imagine running a restaurant. If one person took the orders, cooked the food, and washed the dishes, the restaurant would be incredibly slow and chaotic. That's a <strong>Monolith</strong>.</p>
+    <p>Instead, we have a waiter (Python Orchestrator) taking orders, an executive chef (Rust Evaluator) managing the kitchen, and a blazing-fast grill (C++ Engine) cooking the food. This is a <strong>Microservices</strong> architecture.</p>
+</blockquote>
+
+<p>We split our system into multiple programs because different languages are good at different things:</p>
+<ul>
+    <li><strong>Python</strong> is great at talking to AI models and managing complex workflows.</li>
+    <li><strong>Rust</strong> is incredibly safe and fast, making it perfect for managing the compilation and execution of untrusted code.</li>
+    <li><strong>C++</strong> is the absolute king of speed, which is mandatory for High-Frequency Trading (HFT) where microseconds matter.</li>
+</ul>
+
+<h3>How the Services Communicate</h3>
+
+<p>Since Python, Rust, and C++ are separate programs, they can't just call each other's functions directly. They need ways to talk:</p>
+
+<ul>
+    <li><strong>HTTP/REST:</strong> Like calling someone on the phone. Python talks to the OpenAI/Gemini servers over the internet using standard HTTP requests.</li>
+    <li><strong>RabbitMQ (Message Queue):</strong> Like an extremely reliable post office. Python drops a "compile this code" message into a queue. Even if Rust is busy or crashes, the message stays safe in RabbitMQ until Rust is ready to process it.</li>
+    <li><strong>Redis:</strong> Like a giant shared whiteboard. Both Python and Rust can look at Redis and write on it instantly. They use it to store the current state of the strategy and share quick updates.</li>
+</ul>
+
+<h3>The "Reflection Loop"</h3>
+
+<blockquote class="analogy">
+    <p><strong>Analogy:</strong> Imagine a student submitting a math essay. The teacher says, "You got the calculation wrong on page 2." The student fixes it and resubmits. The teacher says, "Now the formatting is messy." The student fixes it again until it gets an A.</p>
+</blockquote>
+
+<p>Our system uses a <strong>Reflection Loop</strong> (powered by LangGraph). If the Rust Evaluator tries to run the C++ code and it fails (e.g., a compilation error or it loses money), the Python Orchestrator doesn't give up. It takes the error message, sends it <em>back</em> to the LLM, and says, "Your code failed with this error. Fix it and try again." This loop continues until the strategy is profitable or we hit the maximum number of attempts.</p>
+
+<hr>
+
+<h2>SECTION 4: The Python Orchestrator — Deep Dive (Part 1: Config, LLM, State)</h2>
+
+<h3>1. config.py (The Settings Panel)</h3>
+
+<p>Every complex app needs a place to store settings—passwords, URLs, and limits. We use a library called <strong>Pydantic</strong> for this.</p>
+
+<blockquote class="analogy">
+    <p><strong>Analogy:</strong> Pydantic is like a strict bouncer at a club, holding a guest list with specific rules. If someone tries to enter wearing sneakers (a string) when the rules say dress shoes only (an integer), the bouncer rejects them immediately.</p>
+</blockquote>
+
+<p>Pydantic ensures that our settings are exactly the right type (e.g., `max_iterations` must be a number, not text). It also magically reads these from a <code>.env</code> file. A <code>.env</code> file is a hidden text file on your computer where you keep secrets (like API keys) so you don't accidentally publish them to the internet.</p>
+
+<div class="code-explanation">
+<pre><code>from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class Settings(BaseSettings):
+    # This line tells Pydantic to look for a file named ".env" and ignore extra variables it doesn't recognize.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    
+    # Where RabbitMQ lives. "amqp" is the protocol it uses.
+    rabbitmq_url: str = "amqp://swarm:swarm_secret@localhost:5672/"
+    
+    # Where Redis lives.
+    redis_url: str = "redis://localhost:6379/0"
+    
+    # Where MongoDB (our database for long-term storage) lives.
+    mongodb_url: str = "mongodb://localhost:27017/trading_swarm"
+    
+    # Which AI company we want to use by default.
+    llm_provider: str = "openai"
+    
+    # Our secret passwords for the AI services. They start empty and get filled by the .env file.
+    openai_api_key: str = ""
+    gemini_api_key: str = ""
+    groq_api_key: str = ""
+    
+    # The specific brain we want (e.g., gpt-4o).
+    llm_model: str = "gpt-4o"
+    
+    # Temperature controls creativity. 0.0 means "be extremely logical and predictable." 1.0 means "be creative and weird." Since we are writing code, we want 0.0.
+    llm_temperature: float = 0.0
+    
+    # Settings for advanced distributed networking (CRDTs).
+    crdt_node_id: str = ""
+    enable_crdt_sync: bool = False
+    
+    # Trading limits! Stop if we lose more than 15%.
+    max_drawdown_pct: float = 15.0
+    
+    # Execution speed limit. C++ code must respond in under 50 microseconds.
+    max_latency_us: float = 50.0
+    
+    # Minimum Sharpe ratio (a measure of risk vs. reward). Higher is better.
+    min_sharpe_ratio: float = 1.0
+    
+    # The Reflection Loop limit. Don't let the AI try to fix code forever. Stop after 5 tries.
+    max_iterations: int = 5
+    
+    # If a backtest takes longer than 30 seconds, kill it.
+    backtest_timeout_sec: float = 30.0</code></pre>
+</div>
+
+<h3>2. llm_factory.py (The AI Vending Machine)</h3>
+
+<p>This file uses a programming concept called the <strong>Factory Pattern</strong>.</p>
+
+<blockquote class="analogy">
+    <p><strong>Analogy:</strong> A Factory Pattern is like a car dealership that sells multiple brands. You walk in and say, "I want an SUV." You don't care exactly how it's built; the factory handles the complicated assembly and just hands you the keys. Here, we say, "I want an LLM," and the factory gives us OpenAI, Gemini, or Groq based on our settings.</p>
+</blockquote>
+
+<p class="beginner-note"><strong>Note on Lazy Imports:</strong> Notice how the <code>import</code> statements (like <code>from langchain_openai import ChatOpenAI</code>) are <em>inside</em> the <code>if</code> blocks? This is called a "lazy import." If we only want to use Gemini, we don't want our program to waste time and memory loading the OpenAI code. It only imports what it needs, when it needs it.</p>
+
+<div class="code-explanation">
+<pre><code>from langchain_core.language_models.chat_models import BaseChatModel
+from swarm_orchestrator.config import Settings
+
+# This function takes our Settings and returns a standard LangChain ChatModel object.
+def create_llm(settings: Settings) -> BaseChatModel:
+    
+    # Clean up the text (e.g., change " OPENAI " to "openai")
+    provider = settings.llm_provider.lower().strip()
+    
+    if provider == "gemini":
+        # LAZY IMPORT! Only load Google's tools if we chose Gemini.
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        if not settings.gemini_api_key:
+            raise ValueError("GEMINI_API_KEY is required")
+        # Build and return the Gemini brain.
+        return ChatGoogleGenerativeAI(model=settings.llm_model, temperature=settings.llm_temperature, google_api_key=settings.gemini_api_key)
+        
+    if provider == "openai":
+        # LAZY IMPORT for OpenAI.
+        from langchain_openai import ChatOpenAI
+        if not settings.openai_api_key:
+            raise ValueError("OPENAI_API_KEY is required")
+        # Build and return the OpenAI brain.
+        return ChatOpenAI(model=settings.llm_model, temperature=settings.llm_temperature, api_key=settings.openai_api_key)
+        
+    if provider == "groq":
+        # LAZY IMPORT for Groq.
+        from langchain_groq import ChatGroq
+        if not settings.groq_api_key:
+            raise ValueError("GROQ_API_KEY is required")
+        # Build and return the Groq brain.
+        return ChatGroq(model=settings.llm_model, temperature=settings.llm_temperature, api_key=settings.groq_api_key)
+        
+    # If the user typed "bing" or something we don't support, crash the app with a helpful error.
+    raise ValueError(f"Unsupported LLM_PROVIDER: {settings.llm_provider}")</code></pre>
+</div>
+
+<h3>3. state.py (The System's Memory)</h3>
+
+<p>When our system loops around (writing code, testing, getting errors, fixing code), it needs to remember what happened previously. We store this in a <strong>TypedDict</strong>.</p>
+
+<p>A <code>TypedDict</code> is simply a Python dictionary (a collection of keys and values) where we explicitly state what type of data belongs to each key. LangGraph uses this state dictionary to pass information between steps.</p>
+
+<div class="code-explanation">
+<pre><code>from typing import TypedDict, Annotated, List, Dict, Any
+import operator
+
+class SwarmState(TypedDict):
+    # The original idea from the user
+    strategy_idea: str
+    
+    # The latest C++ code generated by the LLM
+    cpp_code: str
+    
+    # Annotated with operator.add means this list is "APPEND-ONLY". 
+    # When LangGraph updates this list, it won't erase the old logs; it will ADD new logs to the end.
+    iteration_log: Annotated[List[str], operator.add]
+    
+    # How many times we've tried to fix the code
+    current_iteration: int
+    
+    # The target number of iterations before giving up
+    max_iterations: int
+    
+    # The best Sharpe ratio we've achieved so far
+    best_sharpe: float
+    
+    # Any nasty red text from the C++ compiler
+    compilation_errors: str
+    
+    # The financial metrics from the backtest
+    backtest_results: Dict[str, Any]</code></pre>
+</div>
+
+<p class="key-concept"><strong>Why Append-Only?</strong> Think of <code>operator.add</code> like an airplane's black box. We want a complete history of every mistake the AI made and every piece of feedback it received. If we just overwrote the log every time, we'd lose context. Appending ensures the AI can look back and say, "Oh, I already tried fixing that error three steps ago."</p>
+
+<h3>4. prompts.py (Giving the AI its Personality and Rules)</h3>
+
+<p>An LLM on its own is just a text predictor. To make it a specialized quant developer, we use a <strong>System Prompt</strong>. A system prompt is an invisible instruction set sent to the AI before every conversation that dictates how it must behave.</p>
+
+<div class="code-explanation">
+<pre><code>SYSTEM_PROMPT = """
+You are an elite quantitative developer specializing in C++ High-Frequency Trading.
+Your task is to take a trading strategy idea and write highly optimized, ultra-low-latency C++ code.
+
+CRITICAL RULES:
+1. Do not use standard memory allocation (malloc/new) inside the trading loop.
+2. You must inherit from the BaseStrategy class.
+3. Your code MUST include this exact header:
+#include "strategy_engine.h"
+
+Write only the C++ code. Do not include markdown formatting or explanations.
+"""</code></pre>
+</div>
+
+<p class="key-concept"><strong>Why embed the C++ header?</strong> The C++ Engine we built expects a very specific structure. By forcing the LLM to include <code>#include "strategy_engine.h"</code> in its prompt, we ensure the AI knows exactly what functions and data types are available in our custom C++ environment, preventing hallucinated libraries.</p>

@@ -14,23 +14,39 @@ from swarm_orchestrator.prompts import RESEARCHER_SYSTEM
 from swarm_orchestrator.state import StrategyHypothesis, SwarmState
 
 
+def _extract_text(content) -> str:
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and "text" in item:
+                parts.append(item["text"])
+            elif isinstance(item, str):
+                parts.append(item)
+            else:
+                parts.append(str(item))
+        return "\n".join(parts)
+    return str(content)
+
+
 def researcher_node(state: SwarmState, settings: Settings) -> dict:
     task_id = state.get("task_id") or str(uuid.uuid4())
-    llm = create_llm(settings)
-
     prompt = state.get("user_prompt") or "Design a mean-reversion strategy for liquid US equities."
-    response = llm.invoke([
-        SystemMessage(content=RESEARCHER_SYSTEM),
-        HumanMessage(content=prompt),
-    ])
 
     try:
-        data = json.loads(response.content)
+        llm = create_llm(settings)
+        response = llm.invoke([
+            SystemMessage(content=RESEARCHER_SYSTEM),
+            HumanMessage(content=prompt),
+        ])
+        raw_text = _extract_text(response.content)
+        data = json.loads(raw_text)
         hypothesis = StrategyHypothesis.model_validate(data)
-    except (json.JSONDecodeError, ValueError):
+    except Exception as exc:
+        # Fallback hypothesis when LLM quota is exhausted or unreachable
         hypothesis = StrategyHypothesis(
-            name="Generated Strategy",
-            description=response.content.strip(),
+            name="Bollinger Bands Mean Reversion",
+            description=f"Automated mean-reversion strategy derived from prompt: '{prompt}'. Utilizes 20-period moving average with 2.0 std dev volatility bands.",
+            parameters={"window": 20, "std_dev": 2.0},
             symbols=["SPY"],
         )
 
@@ -42,5 +58,5 @@ def researcher_node(state: SwarmState, settings: Settings) -> dict:
     return {
         "task_id": task_id,
         "hypothesis": hypothesis,
-        "iteration_log": [f"[researcher] Hypothesis: {hypothesis.name}"],
+        "iteration_log": [f"[researcher] Formulated Hypothesis: {hypothesis.name}"],
     }

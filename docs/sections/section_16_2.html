@@ -1,0 +1,70 @@
+<h3>11. What is the difference between Array-of-Structures (AoS) and Structure-of-Arrays (SoA), and why did we choose SoA for our trading tick data?</h3>
+<div class="key-concept"><p><strong>What they are looking for:</strong> Understanding of memory layout and how organizing data by columns (SoA) rather than rows (AoS) improves cache utilization when processing specific fields.</p></div>
+<p><strong>Answer:</strong></p>
+<p>Imagine you have a list of employees. <strong>AoS (Array of Structures)</strong> is like having a folder for each employee containing their name, age, and salary. <strong>SoA (Structure of Arrays)</strong> is like having one master list of all names, a separate master list of all ages, and a third list of all salaries.</p>
+<p>In our trading engine, if we use AoS for tick data, each tick has a price, volume, and timestamp grouped together. But when we want to calculate the average price, the CPU has to load the whole "folder" (including volume and timestamp) just to look at the price. This wastes memory bandwidth.</p>
+<p>By using SoA (which Apache Arrow uses natively), all the prices are stored back-to-back in memory. When the CPU fetches prices, it gets chunks of just prices. This makes processing operations like moving averages incredibly fast because the CPU cache is filled only with the data we actually need for the calculation.</p>
+
+<h3>12. Explain CPU Cache Locality and Cache Lines. How does this affect our backtesting engine's speed?</h3>
+<div class="key-concept"><p><strong>What they are looking for:</strong> Knowledge of how the CPU fetches memory in blocks (cache lines) and why accessing memory sequentially is faster than jumping around.</p></div>
+<p><strong>Answer:</strong></p>
+<p>Think of your computer's main memory (RAM) as a massive warehouse and the CPU cache as your small desk. Going to the warehouse takes a long time. When the CPU needs data, it doesn't just grab one byte; it grabs a whole "box" of data called a <strong>cache line</strong> (usually 64 bytes) and puts it on your desk.</p>
+<p><strong>Spatial locality</strong> means that if you use an item, you'll probably need the items right next to it soon. If our trading data is stored contiguously (back-to-back in an array), fetching one price brings the next several prices to the desk automatically. This is super fast!</p>
+<p>If our data is scattered everywhere (poor locality, like a linked list), the CPU keeps having to go back to the warehouse to fetch new boxes, throwing out boxes that only had one useful item in them. This is called a "cache miss" and it's the enemy of our high-speed C++ engine.</p>
+
+<h3>13. What is AVX2 SIMD (Single Instruction, Multiple Data) and how do we use it in our C++ execution engine?</h3>
+<div class="key-concept"><p><strong>What they are looking for:</strong> Familiarity with CPU vectorization instructions that process multiple data points in a single clock cycle to accelerate math operations.</p></div>
+<p><strong>Answer:</strong></p>
+<p>Imagine you are a teacher grading math tests. Normally, you'd grade one student's test, then the next, then the next. This is standard scalar processing. <strong>SIMD</strong> is like having a magical stamp that lets you grade 8 tests at the exact same time with a single motion.</p>
+<p>AVX2 is a specific set of these "magical stamps" built into modern processors. It uses 256-bit registers, which means it can hold eight 32-bit floating-point numbers (prices) at once.</p>
+<p>In our C++ execution engine, when we need to multiply our position sizes by the current market prices across a large array of stocks, we don't do it one by one. We use AVX2 instructions to multiply 8 pairs of numbers in a single CPU cycle. This massively speeds up our backtesting math, making it capable of crunching millions of ticks per second.</p>
+
+<h3>14. How does Memory Mapping (mmap) compare to traditional file I/O for loading massive datasets?</h3>
+<div class="key-concept"><p><strong>What they are looking for:</strong> Understanding of OS-level memory management and how mapping a file directly to virtual memory avoids expensive copy operations.</p></div>
+<p><strong>Answer:</strong></p>
+<p><strong>Traditional file I/O</strong> (like `read()`) is like asking a librarian to copy a book onto your notebook. The operating system reads the data from the hard drive, copies it into a system buffer, and then copies it <em>again</em> into your application's memory. For huge trading datasets, this double-copying is very slow.</p>
+<p><strong>Memory Mapping (`mmap`)</strong> is like the librarian simply pointing you to the shelf where the book is and saying, "Just read it here." It links the file on disk directly to your application's virtual memory addresses.</p>
+<p>When our engine uses `mmap` for historical tick data, the OS handles loading the data into RAM only when we actually access that specific memory address (paging). We skip the extra copying step, saving time and memory, which is crucial when dealing with gigabytes of Apache Arrow data.</p>
+
+<h3>15. Why did we use `dlopen` for loading trading strategies instead of statically linking them?</h3>
+<div class="key-concept"><p><strong>What they are looking for:</strong> Knowledge of dynamic shared libraries and how runtime loading enables plug-and-play architecture without recompiling the main engine.</p></div>
+<p><strong>Answer:</strong></p>
+<p><strong>Static linking</strong> is like baking chocolate chips into a cookie. Once the cookie is baked (compiled), you can't swap the chocolate chips for raisins without making a whole new batch.</p>
+<p><strong>Dynamic linking</strong> with `dlopen` is like having a plain cookie and a variety of toppings you can add right before eating. </p>
+<p>In our system, the C++ execution engine is the main application. If we statically linked our trading strategies, every time a quant wrote a new strategy, we would have to recompile and restart the entire engine. By compiling strategies as shared libraries (`.so` or `.dll`) and using `dlopen`, our engine can load, run, and unload new strategies on the fly while it is still running. This provides massive flexibility for our AI orchestrator to test different strategies instantly.</p>
+
+<h3>16. In C++, what is the difference between pointers and references, and when would you use each in a high-performance system?</h3>
+<div class="key-concept"><p><strong>What they are looking for:</strong> Basic C++ syntax understanding, specifically memory addressing, null safety, and passing large objects efficiently.</p></div>
+<p><strong>Answer:</strong></p>
+<p>A <strong>pointer</strong> is like a piece of paper with a house's address written on it. You can erase the address and write a new one (reassignable), or the paper can be blank (a null pointer). </p>
+<p>A <strong>reference</strong> is like an alias or a nickname for the house itself. Once you give a house a nickname, it always refers to that house (cannot be reassigned), and it must refer to a real house (cannot be null).</p>
+<p>In high-performance C++, we pass large objects (like a `TickData` object) to functions by <em>reference</em> (e.g., `const TickData&`) rather than by value. Passing by value creates a full copy of the data, which is slow. We use references when we just want to look at the data safely. We use pointers when we are dealing with dynamic memory, arrays, or APIs like `dlopen` that return memory addresses.</p>
+
+<h3>17. Why is heap allocation a bad idea inside a "hot loop" (like our tick processing loop), and what is the alternative?</h3>
+<div class="key-concept"><p><strong>What they are looking for:</strong> Understanding the performance cost of dynamic memory allocation (`new`/`malloc`) compared to stack allocation or pre-allocation.</p></div>
+<p><strong>Answer:</strong></p>
+<p>The <strong>"hot loop"</strong> is the core part of our code that runs millions of times per second to process market ticks. </p>
+<p><strong>Heap allocation</strong> (using `new` or `malloc`) is like going to a hotel reception and asking for a custom room to be built for you. The OS has to search for free memory, lock it, and update records. It's very slow. If you do this for every tick, your engine will crawl to a halt.</p>
+<p><strong>Stack allocation</strong> is like using your own backpack; it's instantly available and automatically cleaned up when you leave the room.</p>
+<p>For our engine, the alternative is to either use stack variables for temporary data, or to <strong>pre-allocate</strong> memory on the heap <em>before</em> the loop starts. We create a giant pool of memory upfront, and inside the hot loop, we just reuse that existing memory without ever asking the OS for more.</p>
+
+<h3>18. What is a memory leak in C++, and how do we use RAII (Resource Acquisition Is Initialization) or smart pointers to prevent it?</h3>
+<div class="key-concept"><p><strong>What they are looking for:</strong> Understanding of manual memory management pitfalls in C++ and modern safe practices for resource cleanup.</p></div>
+<p><strong>Answer:</strong></p>
+<p>A <strong>memory leak</strong> happens when you borrow memory from the operating system (using `new`) but forget to give it back (using `delete`). It's like checking out a library book and never returning it; eventually, the library runs out of books, and your program crashes from running out of memory.</p>
+<p><strong>RAII</strong> is a C++ concept that ties the lifespan of a resource to an object's scope. Think of it like a smart hotel key card that automatically turns off the room lights when you walk out the door.</p>
+<p>We implement this using <strong>smart pointers</strong> like `std::unique_ptr`. When the smart pointer goes out of scope (like when a function ends or a strategy finishes), it automatically calls `delete` to free the memory. This guarantees we won't have memory leaks in our execution engine, even if an error occurs and the code exits early.</p>
+
+<h3>19. How does Apache Arrow format help with zero-copy data sharing between Python and C++?</h3>
+<div class="key-concept"><p><strong>What they are looking for:</strong> Knowledge of cross-language data serialization bottlenecks and how standardized in-memory formats eliminate them.</p></div>
+<p><strong>Answer:</strong></p>
+<p>Normally, Python and C++ speak different languages when it comes to organizing data in memory. If our Python AI wants to send data to the C++ engine, it usually has to serialize (translate) it into a format like JSON or Protobuf, send it, and C++ deserializes it. This translation takes time and creates a duplicate copy of the data in memory.</p>
+<p><strong>Apache Arrow</strong> is a standardized, language-independent memory format. It's like Python and C++ both agreeing to read the exact same dialect of a language.</p>
+<p>Because the layout is identical in both languages, Python can create an Arrow array, and we can just pass the raw memory pointer to C++. C++ can instantly read it without copying or translating anything. This <strong>zero-copy</strong> sharing is what allows our AI orchestrator and low-level engine to communicate seamlessly with zero latency.</p>
+
+<h3>20. What is branch prediction, and why might an `if` statement inside a tight loop slow down our C++ engine?</h3>
+<div class="key-concept"><p><strong>What they are looking for:</strong> Awareness of CPU pipeline mechanics, speculative execution, and the performance penalty of unpredictable branches.</p></div>
+<p><strong>Answer:</strong></p>
+<p>Imagine you are driving on a highway and see a fork in the road, but the sign is broken. To save time, you guess you need to go left and maintain your speed. If you guessed right, you saved time. If you guessed wrong, you have to hit the brakes, turn around, and go back. This is <strong>branch prediction</strong>.</p>
+<p>Modern CPUs process instructions in an assembly line (pipeline). When they hit an `if` statement (a branch), they guess which way it will go to keep the assembly line full. </p>
+<p>If we have an unpredictable `if` statement inside our hot loop processing millions of ticks, the CPU will frequently guess wrong. Every wrong guess flushes the pipeline (hitting the brakes), causing a massive performance penalty. To avoid this, we write branchless code in C++ (using bitwise math or table lookups) so the CPU never has to guess, keeping the pipeline flowing at maximum speed.</p>

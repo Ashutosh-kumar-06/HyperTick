@@ -113,7 +113,7 @@ EngineResult BacktestEngine::run() {
     }
 
     strategy->on_init(config_.initial_capital, config_.commission_bps, config_.slippage_bps);
-    OrderMatchingSimulator oms(config_.commission_bps, config_.slippage_bps);
+    OrderMatchingSimulator oms(config_.commission_bps, config_.slippage_bps, config_.initial_capital);
 
     const size_t batch = std::max(size_t{1}, config_.batch_size);
     const size_t stride = config_.latency_sample_stride;

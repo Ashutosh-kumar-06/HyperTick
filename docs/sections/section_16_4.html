@@ -1,0 +1,102 @@
+<h3>31. How do you model complex AI agent workflows, and why might you choose a directed graph like LangGraph over a linear script?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Understanding of State Machines and Directed Graphs for agent orchestration, and why linear execution is insufficient for complex AI tasks.</p>
+</div>
+<p>In simple applications, a linear script (do A, then B, then C) works fine. However, autonomous agents need to make decisions, handle errors, and sometimes repeat steps based on their own outputs. We model this using <strong>State Machines</strong> and <strong>Directed Graphs</strong>.</p>
+<p><strong>Analogy:</strong> Imagine a flow chart for baking. A linear script is a rigid recipe: mix batter, bake 30 mins, take out. But what if the cake is undercooked? A directed graph lets you add decision nodes and loops: "check cake -> if undercooked, bake 5 more mins -> check again".</p>
+<p>In our quantitative trading swarm, we use LangGraph in Python. The graph nodes represent different specialized agents (e.g., "Strategy Generator", "Code Evaluator"), and edges represent the flow of data. If the evaluator finds a compilation error, the graph dynamically routes the data back to the generator to fix it, which a static linear script cannot do.</p>
+
+<h3>32. Large Language Models are inherently non-deterministic. How do you ensure an LLM generates valid JSON output that your system can parse without crashing?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Strategies for handling non-deterministic LLM outputs, specifically enforcing structured data and handling parsing failures gracefully.</p>
+</div>
+<p>LLMs generate natural language, which means they might wrap a JSON response in markdown (like <code>```json ... ```</code>) or add conversational filler like "Here is the JSON you requested!". If your code blindly calls <code>json.loads()</code>, it will crash.</p>
+<p><strong>Analogy:</strong> It's like asking a creative artist to fill out a strict tax form. They might draw doodles in the margins. You need a strict template and a way to erase the doodles.</p>
+<p>To handle this, we use:</p>
+<ul>
+  <li><strong>Structured Outputs / Function Calling:</strong> We use API features that force the LLM to conform to a specific JSON schema.</li>
+  <li><strong>Robust Parsing:</strong> We use regex extractors to strip out markdown fences and isolate the JSON payload.</li>
+  <li><strong>Retry Loops:</strong> If parsing still fails, we catch the exception and send the error back to the LLM in an automated prompt: "Your output was invalid JSON. Error: X. Please fix it."</li>
+</ul>
+
+<h3>33. When an AI agent runs for a long time, its conversation history grows indefinitely. How do you handle context window limits in your orchestrator?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Knowledge of managing context window limits using techniques like sliding window memory, summarization, and vector databases.</p>
+</div>
+<p>Every LLM has a maximum token limit (its "context window"). If a conversation goes on too long, you will exceed this limit, and the API will reject the request. Additionally, larger contexts cost more money and take longer to process.</p>
+<p><strong>Analogy:</strong> Think of the context window as your short-term memory. You can only hold so many things in your head at once. When learning a new subject all day, you eventually forget the exact sentences from the morning, but you retain a summary of the concepts.</p>
+<p>We manage this using a <strong>Sliding Window Memory</strong> approach combined with <strong>Summarization</strong>. We keep the most recent N messages exactly as they are. For older messages, we use a background task to summarize them into a dense paragraph, which is injected into the system prompt. This keeps the prompt size small while preserving critical historical context.</p>
+
+<h3>34. In prompt engineering, what is the difference between a System Prompt and a Human Message, and how do you use them effectively?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Understanding of chat completion roles (System, User/Human, Assistant) and how to partition instructions versus data.</p>
+</div>
+<p>Modern LLMs distinguish between different types of messages to know how to behave.</p>
+<p><strong>Analogy:</strong> Imagine an actor in a play. The <strong>System Prompt</strong> is the director's instructions: "You are a grumpy 19th-century detective. Speak formally." The <strong>Human Message</strong> is the script line spoken by another character to which the actor must react.</p>
+<ul>
+  <li><strong>System Prompt:</strong> Sets the overarching persona, strict rules, output formats, and guardrails. It is highly trusted by the model. Example: <em>"You are an expert C++ quantitative developer. Only output compilable C++ code using AVX2 SIMD instructions."</em></li>
+  <li><strong>Human Message:</strong> Contains the specific task, current context, or user query. Example: <em>"Write a moving average crossover strategy using the provided historical data."</em></li>
+</ul>
+
+<h3>35. What is a "reflection loop" in autonomous AI agents, and how does it improve the quality of generated trading strategies?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Understanding of reflection patterns, self-correction, and iterative improvement in agentic workflows.</p>
+</div>
+<p>A reflection loop is a design pattern where an AI generates an output, and then either the same AI or a different "Critic" AI evaluates that output before finalizing it.</p>
+<p><strong>Analogy:</strong> It is identical to writing an essay. Your first pass is a rough draft (generation). Then you read it over, spot spelling mistakes, and rewrite parts (reflection). The final essay is much better than the raw first draft.</p>
+<p>In our LangGraph orchestrator, we use reflection loops extensively. When a Strategy Generator agent writes a C++ trading algorithm, the code is passed to an Evaluator agent. The Evaluator acts as a harsh code reviewer, checking for logical flaws or inefficiencies. If it finds issues, it sends feedback back to the Generator to revise the code. This self-correction drastically reduces bugs.</p>
+
+<h3>36. If an AI agent generates C++ code for a trading strategy, how can you automatically evaluate its correctness without human intervention?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Integrating deterministic programmatic execution with non-deterministic LLM generation, utilizing sandboxing and automated test harnesses.</p>
+</div>
+<p>We cannot just trust an LLM to write flawless C++ code. We must prove it works mathematically and syntactically.</p>
+<p><strong>Analogy:</strong> Grading a math test by looking at the answers versus running the math through a calculator. We want the calculator.</p>
+<p>We automate evaluation by taking the LLM's generated C++ code and passing it to our execution engine pipeline:</p>
+<ol>
+  <li><strong>Compilation Check:</strong> We attempt to compile the code using <code>g++</code>. If it fails, the compiler errors are fed directly back into the LLM as feedback.</li>
+  <li><strong>Sandboxed Execution:</strong> We run the compiled binary inside a Docker container with <code>network=none</code> and resource limits to ensure it doesn't crash the host or do anything malicious.</li>
+  <li><strong>Backtest Harness:</strong> The code is tested against a small historical market dataset. We check if the outputs (trades) make mathematical sense and if the strategy is profitable, before saving it to MongoDB.</li>
+</ol>
+
+<h3>37. When generating or manipulating code, what is the difference between using an Abstract Syntax Tree (AST) versus relying entirely on LLM text generation?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Differentiating between deterministic code parsing (AST) and probabilistic text generation (LLMs), and knowing when to use which.</p>
+</div>
+<p>An <strong>Abstract Syntax Tree (AST)</strong> is a programmatic, tree-like representation of source code generated by a compiler. An LLM, on the other hand, just predicts the next word in a sequence of text.</p>
+<p><strong>Analogy:</strong> Modifying an AST is like an engineer adjusting the blueprints of a house using CAD software—it is mathematically precise. Using an LLM is like asking a contractor to build an extension by describing it over the phone—it's highly flexible but might lack structural integrity.</p>
+<p>We use LLMs for creative tasks, like inventing new trading logic. However, if we need to do something strict—like inserting a specific C++ header file, changing a variable name safely, or validating syntax—we parse the code into an AST. ASTs guarantee that the code remains structurally valid, whereas an LLM might hallucinate a missing semicolon.</p>
+
+<h3>38. How do you prevent an autonomous AI swarm from getting stuck in an infinite loop if the LLM keeps making the same mistake?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Defensive programming in graph state machines, specifically tracking iteration counts and implementing circuit breakers.</p>
+</div>
+<p>Because LangGraph allows cycles (e.g., Generate -> Evaluate -> Feedback -> Generate), an LLM that cannot fix a complex bug might get stuck in an endless loop, draining API credits and blocking the system.</p>
+<p><strong>Analogy:</strong> If you are lost in a maze and keep taking the same wrong turn, you need a rule that says, "After 5 wrong turns, call for help and stop walking."</p>
+<p>We prevent infinite loops by adding a <strong>recursion counter</strong> to the graph's State. Every time the generator node is called, the counter increments. We implement a conditional edge: if <code>counter > MAX_RETRIES</code> (e.g., 3), the graph breaks the loop, marks the strategy as a "Failure", logs the event, and moves on to generating an entirely new strategy.</p>
+
+<h3>39. Prompt Injection is a known vulnerability in LLM applications. How do you protect your trading strategy generator from prompt injection or hallucinated unsafe commands?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Security best practices for LLMs, specifically execution sandboxing and least-privilege principles.</p>
+</div>
+<p>Prompt injection occurs when malicious inputs trick an LLM into ignoring its instructions. While our swarm generates its own prompts, an LLM might still hallucinate malicious C++ code (e.g., `system("rm -rf /")`).</p>
+<p><strong>Analogy:</strong> If you hire an unknown chef (LLM) to cook in your kitchen, you don't give them the keys to your safe or let them bring outside chemicals. You lock down the environment.</p>
+<p>We protect the system not by trying to outsmart the LLM with words, but by using hard system architecture:</p>
+<ul>
+  <li><strong>Docker Sandboxing:</strong> All LLM-generated code runs in heavily restricted Docker containers.</li>
+  <li><strong>No Network Access:</strong> We use <code>network=none</code> so the generated code cannot exfiltrate data or download malware.</li>
+  <li><strong>Non-Root User:</strong> The code executes under a restricted Linux user, preventing it from modifying host files.</li>
+</ul>
+
+<h3>40. How do you optimize and measure the performance of LLM calls in a production orchestrator, given that LLMs can be slow?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Knowledge of asynchronous programming, parallelization, and specific LLM latency metrics (like Time to First Token).</p>
+</div>
+<p>Calling an LLM API can take several seconds, which is an eternity in software. If an orchestrator waits synchronously for every single call, the system becomes unbearably slow.</p>
+<p><strong>Analogy:</strong> If you order food at a restaurant, the waiter doesn't stand in the kitchen staring at the oven until your meal is done. They take other orders (async) while your food cooks.</p>
+<p>We optimize this by using:</p>
+<ul>
+  <li><strong>Asynchronous Calls:</strong> We use Python's <code>asyncio</code> and asynchronous LangChain/LangGraph methods to fire off multiple LLM requests concurrently.</li>
+  <li><strong>Task Queues:</strong> We offload generation tasks to RabbitMQ, allowing multiple worker nodes to generate strategies in parallel.</li>
+  <li><strong>Metrics:</strong> We measure <strong>Time to First Token (TTFT)</strong> to track API responsiveness and total tokens per second. We also cache frequent identical prompts using Redis to skip the LLM call entirely.</li>
+</ul>

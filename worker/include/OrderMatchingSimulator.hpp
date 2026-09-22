@@ -19,7 +19,7 @@ struct PendingOrder {
 /// REQ-3.3: Order Matching Simulator with slippage, commission, and queue priority.
 class OrderMatchingSimulator {
 public:
-    OrderMatchingSimulator(double commission_bps, double slippage_bps);
+    OrderMatchingSimulator(double commission_bps, double slippage_bps, double initial_capital = 100'000.0);
 
     std::vector<FillEvent> process_signals(
         const std::vector<SignalEvent>& signals,

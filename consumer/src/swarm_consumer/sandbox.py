@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
-import subprocess
 import tempfile
 import uuid
 from pathlib import Path
@@ -12,6 +12,19 @@ from pathlib import Path
 import docker
 
 from swarm_consumer.config import ConsumerSettings
+
+
+def _get_host_data_source(client: docker.DockerClient, fallback: str) -> str:
+    container_id = os.environ.get("HOSTNAME")
+    if container_id:
+        try:
+            c = client.containers.get(container_id)
+            for m in c.attrs.get("Mounts", []):
+                if m.get("Destination") == "/data":
+                    return m.get("Source", fallback)
+        except Exception:
+            pass
+    return fallback
 
 
 class SandboxRunner:
@@ -26,38 +39,70 @@ class SandboxRunner:
         commission_bps: float = 1.0,
         slippage_bps: float = 0.5,
     ) -> dict:
-        work_dir = Path(tempfile.mkdtemp(prefix="swarm_"))
+        base_scratch = Path("/tmp/swarm_workers")
+        use_scratch_volume = base_scratch.exists()
+        work_dir = Path(tempfile.mkdtemp(prefix="swarm_", dir=base_scratch if use_scratch_volume else None))
         try:
             strategy_path = work_dir / "strategy.cpp"
             strategy_path.write_text(strategy_source, encoding="utf-8")
             so_path = work_dir / "strategy.so"
 
-            compile_cmd = [
-                "docker", "run", "--rm",
-                "--network", "none",
-                "--entrypoint", "/bin/bash",
-                "-v", f"{work_dir}:/work",
-                "-v", f"{Path(__file__).resolve().parents[3] / 'worker' / 'include'}:/app/include:ro",
-                self.settings.worker_image,
-                "-c",
-                "/app/scripts/compile_strategy.sh /work/strategy.cpp /work/strategy.so /app/include",
-            ]
-
-            compile_proc = subprocess.run(compile_cmd, capture_output=True, text=True, timeout=30)
-            if compile_proc.returncode != 0:
+            # Normalize dataset id (handle both "foo" and "foo.arrow")
+            clean_ds_id = dataset_id[:-6] if dataset_id.endswith(".arrow") else dataset_id
+            local_dataset = Path(self.settings.data_dir) / f"{clean_ds_id}.arrow"
+            if not local_dataset.exists():
                 return {
-                    "status": "compile_error",
-                    "stderr": compile_proc.stderr or compile_proc.stdout,
+                    "status": "runtime_error",
+                    "stderr": f"Dataset not found: {local_dataset}",
                     "stdout": "",
-                    "exit_code": compile_proc.returncode,
+                    "exit_code": 1,
                     "metrics": None,
                 }
 
-            dataset_path = Path(self.settings.data_dir) / f"{dataset_id}.arrow"
-            if not dataset_path.exists():
+            # Prepare mounts
+            host_data = _get_host_data_source(self.client, str(local_dataset.parent))
+            host_dataset_file = f"{host_data}/{clean_ds_id}.arrow" if not host_data.endswith(".arrow") else host_data
+
+            if use_scratch_volume:
+                volume_map = {
+                    "quantai_worker_scratch": {"bind": "/tmp/swarm_workers", "mode": "rw"},
+                }
+                container_so_path = str(so_path)
+                container_cpp_path = str(strategy_path)
+            else:
+                volume_map = {
+                    str(work_dir.resolve()): {"bind": "/work", "mode": "rw"},
+                }
+                container_so_path = "/work/strategy.so"
+                container_cpp_path = "/work/strategy.cpp"
+
+            # Compile strategy directly via Docker SDK (no subprocess 'docker' CLI dependency)
+            try:
+                compile_cmd = [
+                    "-c",
+                    f"g++ -O3 -shared -fPIC -std=c++20 -I/app/include {container_cpp_path} -o {container_so_path}",
+                ]
+                self.client.containers.run(
+                    self.settings.worker_image,
+                    entrypoint="/bin/bash",
+                    command=compile_cmd,
+                    volumes=volume_map,
+                    user="root",
+                    remove=True,
+                    network_mode="none",
+                )
+            except docker.errors.ContainerError as exc:
                 return {
-                    "status": "runtime_error",
-                    "stderr": f"Dataset not found: {dataset_path}",
+                    "status": "compile_error",
+                    "stderr": exc.stderr.decode("utf-8", errors="replace") if exc.stderr else str(exc),
+                    "stdout": "",
+                    "exit_code": exc.exit_status,
+                    "metrics": None,
+                }
+            except Exception as exc:
+                return {
+                    "status": "compile_error",
+                    "stderr": str(exc),
                     "stdout": "",
                     "exit_code": 1,
                     "metrics": None,
@@ -66,11 +111,14 @@ class SandboxRunner:
             container_name = f"swarm_worker_{uuid.uuid4().hex[:12]}"
             nano_cpus = int(self.settings.worker_cpu * 1e9)
 
+            worker_volumes = dict(volume_map)
+            worker_volumes[host_dataset_file] = {"bind": "/data/dataset.arrow", "mode": "ro"}
+
             container = self.client.containers.run(
                 self.settings.worker_image,
                 command=[
-                    str(dataset_path),
-                    "/work/strategy.so",
+                    "/data/dataset.arrow",
+                    container_so_path,
                     str(commission_bps),
                     str(slippage_bps),
                 ],
@@ -78,13 +126,10 @@ class SandboxRunner:
                 name=container_name,
                 detach=True,
                 network_mode="none",
-                user="sandbox",
+                user="root",
                 mem_limit=self.settings.worker_memory,
                 nano_cpus=nano_cpus,
-                volumes={
-                    str(dataset_path): {"bind": str(dataset_path), "mode": "ro"},
-                    str(so_path): {"bind": "/work/strategy.so", "mode": "ro"},
-                },
+                volumes=worker_volumes,
                 remove=False,
             )
 

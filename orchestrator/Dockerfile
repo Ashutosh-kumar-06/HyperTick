@@ -2,8 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY orchestrator/pyproject.toml .
-COPY orchestrator/src/ src/
+COPY pyproject.toml .
+COPY src/ src/
 
 RUN pip install --no-cache-dir .
 

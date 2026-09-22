@@ -1,0 +1,446 @@
+<h2>SECTION 5: The Python Orchestrator — Deep Dive (Part 2: The Graph & Agent Nodes)</h2>
+
+<p>Welcome back! In Part 1, we learned how our system communicates and stores data. Now, we are going to look at the "brains" of the operation. How do we take a simple user request like <em>"Create a trading strategy"</em> and turn it into actual, functioning, highly optimized C++ code?</p>
+
+<p>The answer is an <strong>AI Agent Swarm</strong> powered by a graph framework. In this section, we will look at exactly how the orchestrator guides AI agents to act like a real-world quantitative trading firm, complete with researchers, developers, and evaluators.</p>
+
+<hr>
+
+<h3>graph.py: The Blueprint of our Swarm</h3>
+
+<p class="key-concept"><strong>What is a State Machine?</strong></p>
+<blockquote class="analogy">
+    <p>Imagine a traffic light. It has specific states: Green, Yellow, and Red. It can only transition between these states in a very specific order (Green -> Yellow -> Red -> Green). It never jumps directly from Green to Red. This is a <strong>State Machine</strong>—a system that exists in one specific "state" at a time and follows strict rules about how it can change from one state to another.</p>
+</blockquote>
+<p>In our project, the AI swarm is a state machine. It moves through specific steps (Research -> Code -> Evaluate), carrying data along with it, and deciding what to do next based on the rules we define.</p>
+
+<p class="key-concept"><strong>What is LangGraph and StateGraph?</strong></p>
+<p>LangGraph is a Python library built on top of LangChain. While LangChain is great for a single AI chat interaction, <strong>LangGraph</strong> is designed to build complex, multi-agent workflows. <code>StateGraph</code> is a tool inside LangGraph that lets us define the nodes (the agents doing the work) and the edges (the rules for passing work to the next agent).</p>
+
+<div class="beginner-note">
+    <strong>Python Tip:</strong> What is <code>partial()</code>? Normally, when you pass a function as an argument, you can't pass its arguments at the same time. <code>partial()</code> from the <code>functools</code> library lets you pre-fill some of a function's arguments. For example, <code>partial(coder_node, settings=settings)</code> creates a new version of the <code>coder_node</code> function that already has <code>settings</code> attached to it.
+</div>
+
+<h4>The Code: <code>graph.py</code></h4>
+<pre><code>from functools import partial
+from langgraph.graph import END, StateGraph
+from swarm_orchestrator.config import Settings
+from swarm_orchestrator.nodes.coder import coder_node
+from swarm_orchestrator.nodes.evaluator import should_reflect, submit_and_evaluate_node
+from swarm_orchestrator.nodes.researcher import researcher_node
+from swarm_orchestrator.state import SwarmState
+
+def build_graph(settings=None):
+    settings = settings or Settings()
+    graph = StateGraph(SwarmState)
+    graph.add_node("researcher", partial(researcher_node, settings=settings))
+    graph.add_node("coder", partial(coder_node, settings=settings))
+    graph.add_node("evaluator", partial(submit_and_evaluate_node, settings=settings))
+    graph.set_entry_point("researcher")
+    graph.add_edge("researcher", "coder")
+    graph.add_edge("coder", "evaluator")
+    graph.add_conditional_edges("evaluator", should_reflect, {"coder": "coder", "end": END})
+    return graph.compile()</code></pre>
+
+<div class="code-explanation">
+    <h4>Line-by-Line Walkthrough:</h4>
+    <ul>
+        <li><code>def build_graph(settings=None):</code> — We define a function that will build and return our AI workflow graph.</li>
+        <li><code>settings = settings or Settings()</code> — If no settings are provided, we initialize the default settings.</li>
+        <li><code>graph = StateGraph(SwarmState)</code> — We create a new graph. We pass it <code>SwarmState</code>, which is the data structure (like a shared dictionary) that will be passed from agent to agent.</li>
+        <li><code>graph.add_node("researcher", ...)</code> — We create a node called "researcher" and assign it the <code>researcher_node</code> function. We use <code>partial</code> to pre-inject the <code>settings</code>.</li>
+        <li><code>graph.add_node("coder", ...)</code> and <code>graph.add_node("evaluator", ...)</code> — We create the coder and evaluator nodes exactly like the researcher node.</li>
+        <li><code>graph.set_entry_point("researcher")</code> — We tell the graph that whenever it starts running, it MUST start at the researcher node.</li>
+        <li><code>graph.add_edge("researcher", "coder")</code> — This creates a direct path. When the researcher finishes, the graph <em>always</em> moves to the coder.</li>
+        <li><code>graph.add_edge("coder", "evaluator")</code> — When the coder finishes, it <em>always</em> moves to the evaluator.</li>
+        <li><code>graph.add_conditional_edges(...)</code> — This is the magic! After the evaluator finishes, it calls the <code>should_reflect</code> function. If that function returns "coder", the graph loops back to the coder. If it returns "end", the workflow finishes!</li>
+        <li><code>return graph.compile()</code> — This finalizes the graph structure into a runnable application.</li>
+    </ul>
+</div>
+
+<h4>Visualizing the Graph</h4>
+<p>If you were to draw this, it would look like a flowchart:</p>
+<pre>
+  [ START ]
+      |
+      v
+( Researcher )  <--- Defines the math/strategy
+      |
+      v
+  ( Coder )     <---------+
+      |                   | (If strategy fails)
+      v                   |
+ ( Evaluator ) -----------+
+      |
+      | (If strategy passes or max attempts reached)
+      v
+   [ END ]
+</pre>
+
+<hr>
+
+<h3>nodes/researcher.py: The Brainstormer</h3>
+
+<blockquote class="analogy">
+    <p>Think of the <strong>Researcher Node</strong> as the senior Quantitative Analyst at a hedge fund. They don't write the final optimized C++ code. Instead, they look at the market, come up with a brilliant mathematical theory (the "hypothesis"), and write a specification detailing what assets to trade and what rules to follow.</p>
+</blockquote>
+
+<p class="key-concept"><strong>What is a UUID?</strong></p>
+<p>A UUID (Universally Unique Identifier) is a 36-character string of random letters and numbers (e.g., <code>123e4567-e89b-12d3-a456-426614174000</code>). We use UUIDs because when you have hundreds of trading strategies running across multiple servers, you need a way to guarantee that no two strategies accidentally get the same ID number.</p>
+
+<h4>The Code: <code>researcher.py</code></h4>
+<pre><code>"""REQ-1.1: Researcher Node — generate strategy hypotheses."""
+
+from __future__ import annotations
+
+import json
+import uuid
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from swarm_orchestrator.broker.crdt_state import SwarmStateCRDT
+from swarm_orchestrator.config import Settings
+from swarm_orchestrator.llm_factory import create_llm
+from swarm_orchestrator.prompts import RESEARCHER_SYSTEM
+from swarm_orchestrator.state import StrategyHypothesis, SwarmState
+
+
+def researcher_node(state: SwarmState, settings: Settings) -> dict:
+    task_id = state.get("task_id") or str(uuid.uuid4())
+    llm = create_llm(settings)
+
+    prompt = state.get("user_prompt") or "Design a mean-reversion strategy for liquid US equities."
+    response = llm.invoke([
+        SystemMessage(content=RESEARCHER_SYSTEM),
+        HumanMessage(content=prompt),
+    ])
+
+    try:
+        data = json.loads(response.content)
+        hypothesis = StrategyHypothesis.model_validate(data)
+    except (json.JSONDecodeError, ValueError):
+        hypothesis = StrategyHypothesis(
+            name="Generated Strategy",
+            description=response.content.strip(),
+            symbols=["SPY"],
+        )
+
+    crdt = SwarmStateCRDT(settings.redis_url, settings.crdt_node_id or None)
+    crdt.update_register(task_id, "hypothesis", hypothesis.model_dump())
+    if settings.enable_crdt_sync:
+        crdt.publish_for_sync(task_id)
+
+    return {
+        "task_id": task_id,
+        "hypothesis": hypothesis,
+        "iteration_log": [f"[researcher] Hypothesis: {hypothesis.name}"],
+    }</code></pre>
+
+<div class="code-explanation">
+    <h4>Line-by-Line Walkthrough:</h4>
+    <ul>
+        <li><code>def researcher_node(state: SwarmState, settings: Settings) -> dict:</code> — The node takes the current graph state and settings, and returns a dictionary that updates the state.</li>
+        <li><code>task_id = state.get("task_id") or str(uuid.uuid4())</code> — If this task doesn't have an ID yet, we generate a random UUID for it.</li>
+        <li><code>llm = create_llm(settings)</code> — We boot up our AI model (like GPT-4 or Claude) using our system settings.</li>
+        <li><code>prompt = state.get("user_prompt") or "Design a mean-reversion..."</code> — We get what the user asked for. If the user didn't ask for anything, we use a default prompt.</li>
+        <li><code>response = llm.invoke([...])</code> — This is where we actually talk to the AI. We send it a <code>SystemMessage</code> (which contains strict instructions on how to behave, imported from <code>RESEARCHER_SYSTEM</code>) and a <code>HumanMessage</code> (the user's prompt).</li>
+        <li><code>try: ... except: ...</code> — We expect the AI to return data in JSON format so we can turn it into a Python object (<code>StrategyHypothesis.model_validate</code>). But what if the LLM messes up and just returns plain text?</li>
+        <li><strong>Error Handling:</strong> In the <code>except</code> block, if the JSON parsing fails, we create a fallback <code>StrategyHypothesis</code> manually, taking whatever text the AI gave us and applying it to the default symbol "SPY". The system won't crash!</li>
+        <li><code>crdt = SwarmStateCRDT(...)</code> — We initialize our CRDT (Conflict-free Replicated Data Type) to store this data in Redis, ensuring all servers know about this new hypothesis.</li>
+        <li><code>return { ... }</code> — We return the new data. LangGraph will take this dictionary and merge it into the main <code>SwarmState</code>, carrying it forward to the Coder node.</li>
+    </ul>
+</div>
+
+<hr>
+
+<h3>nodes/coder.py: The Software Engineer</h3>
+
+<blockquote class="analogy">
+    <p>If the Researcher is the analyst, the <strong>Coder Node</strong> is the Software Engineer. The Coder doesn't question the math; its job is to take the Researcher's spec and translate it into flawless, ultra-fast C++ code. If the code breaks during testing, the Coder gets the error report and has to fix it.</p>
+</blockquote>
+
+<h4>The Code: <code>coder.py</code></h4>
+<pre><code>"""REQ-1.2: Coder Node — generate C++ strategy conforming to StrategyInterface.hpp."""
+
+from __future__ import annotations
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from swarm_orchestrator.broker.crdt_state import SwarmStateCRDT
+from swarm_orchestrator.broker.redis_cache import AgentMemoryCache
+from swarm_orchestrator.config import Settings
+from swarm_orchestrator.llm_factory import create_llm
+from swarm_orchestrator.prompts import CODER_SYSTEM
+from swarm_orchestrator.state import SwarmState
+
+
+def _strip_fences(text: str) -> str:
+    lines = text.strip().splitlines()
+    if lines and lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines)
+
+
+def coder_node(state: SwarmState, settings: Settings) -> dict:
+    task_id = state.get("task_id", "")
+    crdt = SwarmStateCRDT(settings.redis_url, settings.crdt_node_id or None)
+    if settings.enable_crdt_sync:
+        crdt.subscribe_sync(task_id)
+
+    cache = AgentMemoryCache(settings.redis_url)
+    history = crdt.format_iteration_log(task_id) or cache.format_for_prompt(task_id)
+
+    llm = create_llm(settings)
+
+    hypothesis_text = ""
+    hypothesis = state.get("hypothesis")
+    if hypothesis:
+        hypothesis_text = hypothesis.model_dump_json(indent=2)
+
+    reflection = ""
+    if state.get("reflection_notes"):
+        reflection = f"\n\nFix these issues from the evaluator:\n{state['reflection_notes']}"
+    outcome = state.get("outcome")
+    if outcome and outcome.stderr:
+        reflection += f"\n\nCompiler/runtime stderr:\n{outcome.stderr[:4000]}"
+
+    response = llm.invoke([
+        SystemMessage(content=CODER_SYSTEM),
+        HumanMessage(content=f"{history}\n\nHypothesis:\n{hypothesis_text}{reflection}"),
+    ])
+
+    source = _strip_fences(response.content)
+    iteration = state.get("iteration", 0)
+
+    crdt.update_register(task_id, "strategy_source", source)
+    crdt.append_iteration(task_id, {
+        "iteration": iteration,
+        "status": "coded",
+        "notes": f"Generated strategy for {hypothesis.name if hypothesis else 'unknown'}",
+    })
+    if settings.enable_crdt_sync:
+        crdt.publish_for_sync(task_id)
+
+    cache.append_iteration(task_id, {
+        "iteration": iteration,
+        "status": "coded",
+        "notes": f"Generated strategy for {hypothesis.name if hypothesis else 'unknown'}",
+    })
+
+    return {
+        "strategy_source": source,
+        "iteration": iteration + 1,
+        "iteration_log": [f"[coder] Iteration {iteration + 1} source generated ({len(source)} bytes)"],
+    }</code></pre>
+
+<div class="code-explanation">
+    <h4>Line-by-Line Walkthrough:</h4>
+    <ul>
+        <li><code>def _strip_fences(text: str) -> str:</code> — Large Language Models (like ChatGPT) love to wrap code in markdown formatting (like <code>```cpp ... ```</code>). We can't feed markdown backticks into a C++ compiler! This helper function simply looks at the first and last lines of the text and removes those backticks if they exist.</li>
+        <li><code>history = crdt.format_iteration_log(...)</code> — <strong>Iteration Memory:</strong> If the coder makes a mistake and the loop runs again, we load the "history". This prevents the LLM from making the exact same mistake twice. It gives the AI a memory of what it just tried.</li>
+        <li><code>hypothesis_text = hypothesis.model_dump_json(indent=2)</code> — We convert the researcher's hypothesis object back into readable JSON text so the LLM can understand it.</li>
+        <li><code>reflection = ...</code> — <strong>Reflection Notes:</strong> If the graph looped backward, the Evaluator node will have left notes detailing exactly what failed (e.g., "The code compiled, but it traded too much and lost money"). We append this to the prompt.</li>
+        <li><code>outcome.stderr[:4000]</code> — If the C++ compiler actually threw an error, we capture the standard error (stderr) output and feed the first 4,000 characters directly to the AI so it can debug its own code!</li>
+        <li><code>response = llm.invoke(...)</code> — We ask the LLM to write the C++ code based on the history, hypothesis, and any error reflections.</li>
+        <li><code>source = _strip_fences(response.content)</code> — We clean the markdown off the AI's response to get pure C++ source code.</li>
+        <li><code>"iteration": iteration + 1</code> — We increment the iteration counter. This ensures we don't end up in an infinite loop.</li>
+    </ul>
+</div>
+
+<hr>
+
+<h3>nodes/evaluator.py: The Quality Inspector</h3>
+
+<blockquote class="analogy">
+    <p>The <strong>Evaluator Node</strong> is the Quality Assurance Inspector on an assembly line. When a product (the C++ code) comes down the line, the inspector runs rigorous tests on it. If it fails, the inspector sends it back to the manufacturer (the Coder) with a detailed note on what to fix. If it passes, it gets stamped "Approved" and placed in the warehouse (MongoDB database).</p>
+</blockquote>
+
+<p>This file is highly complex because it forms a bridge between our Python orchestrator and our high-performance C++ backtesting engine (which is discussed in another section). They communicate using a message queue (RabbitMQ).</p>
+
+<h4>The Code: <code>evaluator.py</code></h4>
+<pre><code>"""REQ-1.3 / REQ-1.4: Evaluator Node and reflection routing."""
+
+from __future__ import annotations
+
+import json
+import time
+
+import pika
+from langchain_core.messages import HumanMessage, SystemMessage
+from pymongo import MongoClient
+
+from swarm_orchestrator.broker.crdt_state import SwarmStateCRDT
+from swarm_orchestrator.broker.rabbitmq import (
+    BacktestResultPayload,
+    BacktestTaskPayload,
+    RESULT_QUEUE,
+    declare_topology,
+    parse_result,
+    publish_task,
+)
+from swarm_orchestrator.broker.redis_cache import AgentMemoryCache
+from swarm_orchestrator.config import Settings
+from swarm_orchestrator.llm_factory import create_llm
+from swarm_orchestrator.prompts import EVALUATOR_SYSTEM
+from swarm_orchestrator.state import BacktestMetrics, BacktestOutcome, SwarmState
+
+
+def _wait_for_result(channel: pika.adapters.blocking_connection.BlockingChannel, task_id: str, timeout: float) -> BacktestResultPayload | None:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        method, _, body = channel.basic_get(queue=RESULT_QUEUE, auto_ack=True)
+        if method is None:
+            time.sleep(0.25)
+            continue
+        result = parse_result(body)
+        if result.task_id == task_id:
+            return result
+    return None
+
+
+def submit_and_evaluate_node(state: SwarmState, settings: Settings) -> dict:
+    """Publish backtest task, wait for result, evaluate KPIs."""
+    cache = AgentMemoryCache(settings.redis_url)
+
+    params = pika.URLParameters(settings.rabbitmq_url)
+    connection = pika.BlockingConnection(params)
+    channel = connection.channel()
+    declare_topology(channel)
+
+    hypothesis = state.get("hypothesis")
+    task = BacktestTaskPayload(
+        task_id=state.get("task_id", ""),
+        iteration=state.get("iteration", 0),
+        strategy_source=state.get("strategy_source", ""),
+        dataset_id=state.get("dataset_id", "sample_spy_ticks"),
+        metadata={
+            "hypothesis": hypothesis.description if hypothesis else "",
+            "symbols": hypothesis.symbols if hypothesis else [],
+        },
+    )
+    publish_task(channel, task)
+
+    task_id = state.get("task_id", "")
+    raw = _wait_for_result(channel, task_id, settings.backtest_timeout_sec)
+    connection.close()
+
+    if raw is None:
+        outcome = BacktestOutcome(task_id=task_id, status="timeout", stderr="Backtest result timeout")
+    else:
+        metrics = None
+        if raw.metrics:
+            metrics = BacktestMetrics(**raw.metrics)
+        outcome = BacktestOutcome(
+            task_id=raw.task_id,
+            status=raw.status,  # type: ignore[arg-type]
+            metrics=metrics,
+            stderr=raw.stderr,
+            stdout=raw.stdout,
+        )
+
+    approved = False
+    reflection = ""
+
+    if outcome.status != "success":
+        reflection = f"Execution failed with status={outcome.status}. stderr: {outcome.stderr[:2000]}"
+    elif outcome.metrics:
+        m = outcome.metrics
+        failures = []
+        if m.max_drawdown_pct > settings.max_drawdown_pct:
+            failures.append(f"Max drawdown {m.max_drawdown_pct:.2f}% exceeds {settings.max_drawdown_pct}%")
+        if m.avg_latency_us > settings.max_latency_us:
+            failures.append(f"Avg latency {m.avg_latency_us:.2f}µs exceeds {settings.max_latency_us}µs")
+        if m.sharpe_ratio < settings.min_sharpe_ratio:
+            failures.append(f"Sharpe {m.sharpe_ratio:.2f} below minimum {settings.min_sharpe_ratio}")
+
+        if failures:
+            reflection = "; ".join(failures)
+        else:
+            approved = True
+
+    if not approved and not reflection:
+        llm = create_llm(settings)
+        eval_input = json.dumps(outcome.model_dump(), indent=2)
+        response = llm.invoke([
+            SystemMessage(content=EVALUATOR_SYSTEM),
+            HumanMessage(content=eval_input),
+        ])
+        reflection = response.content.strip()
+
+    cache.append_iteration(task_id, {
+        "iteration": state.get("iteration", 0),
+        "status": outcome.status,
+        "notes": reflection or "approved",
+        "metrics": outcome.metrics.model_dump() if outcome.metrics else None,
+    })
+
+    crdt = SwarmStateCRDT(settings.redis_url, settings.crdt_node_id or None)
+    crdt.update_register(task_id, "reflection_notes", reflection)
+    crdt.append_iteration(task_id, {
+        "iteration": state.get("iteration", 0),
+        "status": outcome.status,
+        "notes": reflection or "approved",
+        "metrics": outcome.metrics.model_dump() if outcome.metrics else None,
+    })
+    if settings.enable_crdt_sync:
+        crdt.publish_for_sync(task_id)
+
+    if approved:
+        try:
+            client = MongoClient(settings.mongodb_url)
+            db = client.get_default_database()
+            hypothesis = state.get("hypothesis")
+            db.strategies.insert_one({
+                "task_id": task_id,
+                "hypothesis": hypothesis.model_dump() if hypothesis else None,
+                "strategy_source": state.get("strategy_source", ""),
+                "metrics": outcome.metrics.model_dump() if outcome.metrics else None,
+            })
+        except Exception:
+            pass
+
+    return {
+        "outcome": outcome,
+        "approved": approved,
+        "reflection_notes": reflection,
+        "iteration_log": [f"[evaluator] status={outcome.status} approved={approved}"],
+    }
+
+
+def should_reflect(state: SwarmState) -> str:
+    """REQ-1.4: Reflection edge — route back to coder or end."""
+    if state.get("approved"):
+        return "end"
+    if state.get("iteration", 0) >= state.get("max_iterations", 5):
+        return "end"
+    return "coder"</code></pre>
+
+<div class="code-explanation">
+    <h4>Line-by-Line Walkthrough:</h4>
+    <ul>
+        <li><code>def _wait_for_result(...)</code> — <strong>The Polling Pattern:</strong> Once we send the C++ code to be tested, it takes time. This function loops constantly (a <code>while</code> loop). It checks the RabbitMQ message queue. If it finds a message matching our <code>task_id</code>, it grabs it. If it doesn't find it, it sleeps for a quarter of a second and checks again until the <code>deadline</code> is reached.</li>
+        <li><code>task = BacktestTaskPayload(...)</code> — We package up the C++ code (<code>strategy_source</code>) and other metadata into a structured payload.</li>
+        <li><code>publish_task(channel, task)</code> — We send the package over RabbitMQ to the C++ engine.</li>
+        <li><code>raw = _wait_for_result(...)</code> — We wait for the C++ engine to finish simulating the strategy and return the results.</li>
+        <li><strong>KPI Checking Logic:</strong> If the code ran successfully, we check the financial metrics (Key Performance Indicators):
+            <ul>
+                <li><strong>Max Drawdown:</strong> What was the largest percentage drop from peak to trough in our portfolio? If it drops more than our setting (e.g., 20%), the strategy is too risky.</li>
+                <li><strong>Average Latency:</strong> How fast did our C++ code execute? If it's slower than our setting (e.g., 100 microseconds), it will lose in High-Frequency Trading.</li>
+                <li><strong>Sharpe Ratio:</strong> This is a financial metric that measures risk-adjusted return. A higher Sharpe ratio means better, safer profits. If it's below our minimum, the strategy isn't good enough.</li>
+            </ul>
+        </li>
+        <li><code>if not approved and not reflection:</code> — <strong>AI Evaluation:</strong> If the strategy failed our checks, but we didn't generate a clear string of reasons why, we actually boot up an LLM here! We ask the LLM Evaluator to look at the financial data and write a critique for the Coder on why it failed financially, so the Coder can try a different approach.</li>
+        <li><code>db.strategies.insert_one(...)</code> — <strong>MongoDB Storage:</strong> If the strategy passes ALL checks, congratulations! It's a profitable, lightning-fast algorithmic trading strategy. We save the code and its financial metrics into our NoSQL MongoDB database so it can be deployed to live markets.</li>
+        <li><code>def should_reflect(state: SwarmState) -> str:</code> — This is the decision function we attached to the graph earlier.
+            <ul>
+                <li>If <code>approved</code> is True, return "end" (we finished successfully).</li>
+                <li>If we have looped more times than <code>max_iterations</code> (usually 5), return "end" (we give up so we don't spend forever in an infinite loop).</li>
+                <li>Otherwise, return "coder" (send it back to the coder node with the reflection notes to try again).</li>
+            </ul>
+        </li>
+    </ul>
+</div>
+
+<p>By chaining these three nodes together, we have created an autonomous system that can dream up trading ideas, write the high-speed code for them, rigorously backtest them, debug them if they fail, and store them securely if they succeed!</p>

@@ -99,13 +99,17 @@ def submit_and_evaluate_node(state: SwarmState, settings: Settings) -> dict:
             approved = True
 
     if not approved and not reflection:
-        llm = create_llm(settings)
-        eval_input = json.dumps(outcome.model_dump(), indent=2)
-        response = llm.invoke([
-            SystemMessage(content=EVALUATOR_SYSTEM),
-            HumanMessage(content=eval_input),
-        ])
-        reflection = response.content.strip()
+        try:
+            llm = create_llm(settings)
+            eval_input = json.dumps(outcome.model_dump(), indent=2)
+            response = llm.invoke([
+                SystemMessage(content=EVALUATOR_SYSTEM),
+                HumanMessage(content=eval_input),
+            ])
+            raw_text = response.content if isinstance(response.content, str) else str(response.content)
+            reflection = raw_text.strip()
+        except Exception:
+            reflection = "KPI targets not met during backtesting."
 
     cache.append_iteration(task_id, {
         "iteration": state.get("iteration", 0),

@@ -1,0 +1,90 @@
+<h3>1. Microservices vs Monoliths: Why is the Backtesting Swarm split into a Python Orchestrator and a C++ Execution Engine rather than a single application?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Understanding of separation of concerns, choosing the right tool for the job, and the ability to scale components independently based on their unique bottlenecks.</p>
+</div>
+<p>In a monolith, everything is bundled together. However, our system has two distinct workloads: complex logic routing and raw number-crunching.</p>
+<p>Think of it like a high-end restaurant. The Python AI Orchestrator (LangGraph) is the <em>Maitre D'</em>—excellent at talking to customers, organizing reservations, and making complex decisions, but you wouldn't want them cooking the food. The C++ Execution Engine is the <em>Chef</em>—highly specialized, extremely fast, and focused purely on processing ingredients (market data) using specialized tools (AVX2 SIMD and Apache Arrow).</p>
+<p>By using microservices, we can use Python where it shines (AI and graph logic) and C++ where it shines (low-latency execution). Furthermore, if we get a massive influx of backtest requests, we can spin up 100 new "Chef" C++ nodes without having to duplicate the "Maitre D'" Python node.</p>
+
+<h3>2. Asynchronous vs Synchronous: Why use RabbitMQ task queues to trigger backtests instead of a direct REST API call from the Orchestrator to the C++ nodes?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Knowledge of message brokers, decoupling services, backpressure management, and handling long-running asynchronous tasks.</p>
+</div>
+<p>A backtest can take anywhere from a few seconds to several hours. If we used synchronous REST APIs (like an HTTP POST), the Python orchestrator would have to sit and wait (block) on the line for the entire duration. If the network blips, the connection breaks, and the result is lost.</p>
+<p>Using RabbitMQ is like a restaurant's order ticket wheel. The waiters (Python orchestrator) stick the order ticket (task) on the wheel and immediately walk away to help other customers. The cooks (C++ nodes) pull tickets off the wheel one by one (with <code>prefetch=1</code>) only when they are ready to cook.</p>
+<p>This decoupling ensures that a massive spike in requests doesn't overwhelm the C++ nodes; the tasks just wait safely in the RabbitMQ queue until a worker is free. It also prevents the Python orchestrator from getting stuck waiting for a response.</p>
+
+<h3>3. Fault Tolerance: What happens if a C++ execution node crashes in the middle of a heavy backtest calculation?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Understanding of message acknowledgments, retry mechanisms, and idempotency in distributed systems.</p>
+</div>
+<p>In distributed systems, crashes are a matter of "when," not "if." Because we use RabbitMQ as our message broker, we rely on a feature called <strong>message acknowledgment (ack)</strong>.</p>
+<p>When a C++ node pulls a backtest task from the queue, RabbitMQ temporarily hides that task from other workers but doesn't delete it. It waits for the C++ node to send back an "ack" saying, "I'm successfully done."</p>
+<p>If the C++ node crashes (e.g., runs out of memory or has a segmentation fault), the network connection to RabbitMQ drops. RabbitMQ immediately notices the node is gone without sending an "ack." It then takes that same task and puts it back in the queue so another healthy C++ worker can pick it up. This ensures no backtest is ever lost. (Note: We must ensure our backtests are <em>idempotent</em>—meaning running the same test twice doesn't corrupt our final MongoDB results).</p>
+
+<h3>4. Distributed State Management: How do you handle caching and shared state across many orchestrator and worker nodes without race conditions?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Familiarity with in-memory datastores (Redis) and techniques for managing concurrent updates in distributed systems (CRDTs).</p>
+</div>
+<p>When you have dozens of nodes trying to update the global state of the swarm (like tracking which strategies have been tested or updating global fitness scores), standard databases can become a bottleneck or suffer from race conditions (where Node A overwrites Node B's data because they updated at the exact same millisecond).</p>
+<p>We use Redis for blazing-fast in-memory caching. To solve the race condition problem, we use <strong>CRDTs (Conflict-Free Replicated Data Types)</strong>.</p>
+<p>Imagine a shared Google Doc. If two people type at the same time, the system mathematically merges their changes without locking the document. CRDTs do the exact same thing for our Redis data. They allow multiple nodes to increment counters or add items to sets simultaneously without needing slow database locks, guaranteeing that all nodes eventually see the same correct data.</p>
+
+<h3>5. Database Sharding: As the system scales and generates billions of trade logs, how do you scale the MongoDB storage layer?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Understanding of horizontal scaling at the database layer and choosing an effective shard key.</p>
+</div>
+<p>When a single database server's hard drive gets too full or its CPU gets overloaded by queries, we have to <em>shard</em> the database. Sharding means splitting the data horizontally across multiple independent servers.</p>
+<p>Think of it like an encyclopedia set. Instead of one massive, unliftable book containing all knowledge (a single database), you split it into 26 books, A through Z (shards). If someone wants "Apple," they go to book A. If they want "Zebra," they go to book Z.</p>
+<p>In MongoDB, the secret to good sharding is the <strong>Shard Key</strong>. If we shard by <code>strategy_id</code>, all trades for Strategy #123 go to Server A, and trades for Strategy #999 go to Server B. This is highly efficient because when the orchestrator wants to analyze a specific strategy, MongoDB knows exactly which single server to query, avoiding a scatter-gather search across the entire cluster.</p>
+
+<h3>6. Resource Isolation: How do you safely run unknown, potentially buggy, or malicious trading strategies dynamically?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Security principles, sandboxing, and container orchestration knowledge.</p>
+</div>
+<p>Because the C++ engine dynamically loads strategies (using <code>dlopen</code>), a poorly written strategy with an infinite loop or a memory leak could crash the entire execution node. Worse, a malicious strategy could try to steal data or access the network.</p>
+<p>To prevent this, we use <strong>Docker for strict sandboxing</strong>. We run the execution tasks inside isolated containers with specific constraints:</p>
+<ul>
+  <li><strong>Network=none:</strong> The container is completely disconnected from the internet, preventing data exfiltration.</li>
+  <li><strong>Resource Limits (cgroups):</strong> We cap the CPU and RAM. If a strategy has a memory leak, Docker kills just that container when it hits the RAM limit, protecting the host machine.</li>
+  <li><strong>Non-root users:</strong> The code executes without administrative privileges, meaning it can't modify the host operating system.</li>
+</ul>
+<p>It's like putting a new, untested animal in a reinforced, soundproof enclosure at the zoo before letting it near the main exhibits.</p>
+
+<h3>7. Data Locality and Format: How does the C++ engine process massive datasets so much faster than traditional architectures?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Understanding of memory hierarchies, columnar data formats (Apache Arrow), and hardware-level optimizations (SIMD).</p>
+</div>
+<p>In standard architectures, a lot of time is wasted just moving data around and translating it between formats (e.g., from a database row to a JSON object to a Python dictionary to C++ objects). This is called serialization/deserialization overhead.</p>
+<p>We solve this using <strong>Apache Arrow</strong>, an in-memory columnar data format. Arrow acts as a universal language. When data is loaded, it is stored in contiguous blocks of memory in columns (all prices together, all timestamps together). The C++ engine can read this exact same memory layout directly without any translation.</p>
+<p>Because the data is contiguous, we can use <strong>AVX2 SIMD</strong> (Single Instruction, Multiple Data). Imagine a teacher grading papers. A normal CPU grades one paper at a time. SIMD allows the CPU to stack 8 papers together and grade them all with a single stamp. By combining Arrow's memory layout with SIMD, the C++ engine processes millions of market ticks per second.</p>
+
+<h3>8. API Gateway Design: How should external clients interact with the Swarm safely and efficiently?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> API design patterns, rate limiting, authentication, and routing in a microservices ecosystem.</p>
+</div>
+<p>We wouldn't want users talking directly to our Python Orchestrator or our RabbitMQ queues. Instead, we place an <strong>API Gateway</strong> in front of our system. </p>
+<p>The API Gateway acts as the receptionist for our building. It handles:</p>
+<ul>
+  <li><strong>Authentication:</strong> Checking IDs to make sure the user is allowed inside.</li>
+  <li><strong>Rate Limiting:</strong> Ensuring one user doesn't spam the system with a million requests and ruin the experience for everyone else.</li>
+  <li><strong>Routing:</strong> Taking a user's request (e.g., <code>POST /api/v1/backtest</code>) and securely forwarding it to the internal Python orchestrator.</li>
+</ul>
+<p>This hides the complex internal architecture (LangGraph, RabbitMQ, C++ nodes) from the client, providing a simple, unified REST or GraphQL interface.</p>
+
+<h3>9. Scaling the Orchestrator: How do you scale the LangGraph Python orchestrator as the swarm logic gets more complex?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> Stateless vs. Stateful service design and horizontal scaling of AI agents.</p>
+</div>
+<p>Scaling stateful applications (where the app remembers everything in its own local memory) is hard. If User A talks to Server 1, and their next request goes to Server 2, Server 2 won't know who they are.</p>
+<p>To scale the Python orchestrator, we must make it <strong>stateless</strong>. We achieve this by storing all conversational state, agent memory, and graph checkpoints in an external database (like Redis or PostgreSQL).</p>
+<p>Once the orchestrator is stateless, we can deploy a Load Balancer in front of 5, 10, or 50 Python instances. When a request comes in, the load balancer sends it to any available Python node. That node quickly fetches the current state from Redis, performs the AI graph logic, saves the new state back to Redis, and goes back to sleep. This allows us to scale horizontally infinitely based on demand.</p>
+
+<h3>10. Event-Driven Architecture: How do you notify clients when a 3-hour backtest finally finishes?</h3>
+<div class="key-concept">
+  <p><strong>What they are looking for:</strong> WebSockets, Server-Sent Events (SSE), and asynchronous client-server communication patterns.</p>
+</div>
+<p>If a client requests a backtest that takes 3 hours, they cannot leave an HTTP connection open that long. The standard approach is polling (the client asks "Are we there yet?" every 5 seconds). Polling is highly inefficient and wastes server resources.</p>
+<p>Instead, we use an <strong>Event-Driven</strong> approach using WebSockets or Server-Sent Events (SSE).</p>
+<p>When the client submits a task, the API Gateway immediately returns a <code>TaskID</code> (e.g., "Status: Pending"). The client then establishes a WebSocket connection subscribing to updates for that TaskID. </p>
+<p>When the C++ node finishes the task, it drops a "Completed" event into a RabbitMQ results queue. A lightweight notification service picks up this event and pushes it down the open WebSocket directly to the client. It's like giving the restaurant customer a buzzer that vibrates exactly when their table is ready, rather than having them walk up to the host stand every two minutes.</p>

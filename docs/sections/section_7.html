@@ -1,0 +1,401 @@
+<h2 id="section-7-the-c-worker-engine-complete-deep-dive">SECTION 7: The C++ Worker Engine — Complete Deep Dive</h2>
+
+<p>Welcome to the core of our trading system! If you've been following along, you know that our Python agents generate the strategies, but they pass the heavy lifting of backtesting to a C++ engine. Why? Because Python is like a comfortable luxury car—great for driving around, but not meant for setting land-speed records. C++ is a Formula 1 car. It requires more skill to drive, but it's built for raw speed.</p>
+
+<p>In this section, we will break down the C++ Worker Engine completely from scratch. If you've only ever written Python, don't worry. We are going to translate everything into concepts you already understand.</p>
+
+<hr />
+
+<h3 id="c-crash-course-for-python-developers">C++ Crash Course for Python Developers</h3>
+
+<p>Before we dive into the trading engine code, we need to learn a few C++ basics. C++ has a reputation for being scary, but underneath, it's just a programming language that asks you to be more specific about what you want.</p>
+
+<h4 id="variables-and-types">Variables and Types</h4>
+<div class="key-concept">
+  <strong>Key Difference:</strong> In Python, variables can change their type on the fly (Dynamic Typing). In C++, you must declare exactly what a variable holds before you use it, and it can never change (Static Typing).
+</div>
+
+<p>In Python, you can write:</p>
+<pre><code class="language-python">price = 100.50  # Python figures out this is a float
+price = "One Hundred" # Now it's a string!
+</code></pre>
+
+<p>In C++, you must declare the type upfront:</p>
+<pre><code class="language-cpp">double price = 100.50; // 'double' means a high-precision decimal number
+// price = "One Hundred"; // ERROR! A double cannot become a string.
+int shares = 50; // 'int' is a whole number (integer)
+std::string symbol = "AAPL"; // 'std::string' is text
+</code></pre>
+
+<h4 id="pointers-and-references">Pointers and References</h4>
+<div class="analogy">
+  <strong>Analogy:</strong> Imagine a house. 
+  <ul>
+    <li>The <strong>Variable</strong> is the house itself.</li>
+    <li>A <strong>Reference (<code>&amp;</code>)</strong> is an alternate name for the same house (like calling it "My Home" instead of "The House").</li>
+    <li>A <strong>Pointer (<code>*</code>)</strong> is a piece of paper with the <em>address</em> of the house written on it.</li>
+  </ul>
+</div>
+
+<p>In Python, when you pass an object to a function, Python quietly passes a reference to it. In C++, you have to be explicit.</p>
+
+<pre><code class="language-cpp">int my_money = 1000;
+
+// REFERENCE: 'alias' is literally the same memory spot as 'my_money'
+int&amp; alias = my_money; 
+alias = 2000; // my_money is now 2000!
+
+// POINTER: 'address' holds the memory location (e.g., 0x7FFA...) of 'my_money'
+int* address = &amp;my_money; 
+*address = 3000; // Go to the address and change the value. my_money is now 3000!
+</code></pre>
+<p>Why do we use pointers? Because moving a piece of paper (the address) is incredibly fast, whereas moving an entire house (copying massive amounts of data) is slow.</p>
+
+<h4 id="header-files-vs-source-files">Header Files (.hpp) vs Source Files (.cpp)</h4>
+<div class="analogy">
+  <strong>Analogy:</strong> A <strong>Header File (<code>.hpp</code>)</strong> is the <em>Restaurant Menu</em>. It tells you what dishes are available, but doesn't tell you how to cook them. A <strong>Source File (<code>.cpp</code>)</strong> is the <em>Kitchen</em>. It contains the actual recipes and does the cooking.
+</div>
+
+<p>In Python, you just write code in a <code>.py</code> file. In C++, we split things up so that when different parts of the program want to talk to each other, they only need to look at the menu (<code>.hpp</code>) rather than reading the entire recipe (<code>.cpp</code>).</p>
+
+<h4 id="what-is-include">What is <code>#include</code>?</h4>
+<div class="beginner-note">
+  <strong>Beginner Tip:</strong> <code>#include</code> is exactly like <code>import</code> in Python.
+</div>
+<p>When you write <code>#include &lt;iostream&gt;</code>, it's like writing <code>import sys</code> in Python. It pulls in code written by someone else so you can use it. <code>#include "MyMenu.hpp"</code> imports your own local files.</p>
+
+<h4 id="namespaces">Namespaces</h4>
+<div class="analogy">
+  <strong>Analogy:</strong> Namespaces are like last names. If someone says "Hey, John!", and there are three Johns in the room, it's confusing. If they say "Hey, John Smith!", it's clear.
+</div>
+<p>In C++, a lot of standard tools are in the <code>std</code> (standard) namespace. To use the standard string, you say <code>std::string</code> (John from the std family).</p>
+
+<h4 id="virtual-classes-and-interfaces">Virtual Classes and Interfaces</h4>
+<div class="analogy">
+  <strong>Analogy:</strong> A pure virtual class is a blueprint from a strict city inspector. It says, "If you want to build a house in this city, you <em>must</em> include a front door and a roof." It doesn't build the house for you; it just forces the builder to follow the rules.
+</div>
+<p>In C++, a class with <code>virtual function() = 0;</code> is a "pure virtual class" (also called an Interface). We use this to define a strict set of rules for our trading strategies. Any strategy we write MUST have specific functions, otherwise, the compiler won't let it run.</p>
+
+<h4 id="extern-c-and-dlopen">extern "C" and dlopen()</h4>
+<div class="analogy">
+  <strong>Analogy:</strong> <code>dlopen()</code> is like plugging a USB drive into your computer while it's already running. You don't have to turn off the computer to plug it in; the OS detects it and loads its contents dynamically.
+</div>
+<p>Normally, C++ programs are glued completely together before they start. But we want our python agent to write a new strategy, compile it, and plug it into the running backtester <em>without</em> stopping the engine. We do this using Shared Libraries (<code>.so</code> files on Linux/Mac, <code>.dll</code> on Windows) and the <code>dlopen()</code> function.</p>
+<p>However, C++ likes to "mangle" function names (turning <code>my_function</code> into something unreadable like <code>_Z11my_functionv</code>) to handle complex features. <code>extern "C"</code> tells the C++ compiler: <em>"Hey, don't mangle this name. Keep it simple like the C language does, so my program can easily find it when I plug it in later."</em></p>
+
+<hr />
+
+<h3 id="strategyinterface-hpp-the-contract">StrategyInterface.hpp — The Contract</h3>
+
+<p>Now let's look at real code! Our engine needs a strict set of rules that every dynamically loaded strategy must follow. We define these rules in <code>StrategyInterface.hpp</code>.</p>
+
+<div class="code-explanation">
+<pre><code class="language-cpp">#pragma once
+#include &lt;cstdint&gt;
+
+// --- Data Structures ---
+
+struct Tick {
+    uint64_t timestamp;  // When it happened (in nanoseconds)
+    double price;        // The price of the asset
+    double volume;       // How much was traded
+};
+
+struct MarketEvent {
+    Tick tick;
+    // We can add more info here later, like order book depth
+};
+
+struct SignalEvent {
+    int signal;          // 1 for BUY, -1 for SELL, 0 for HOLD
+    double confidence;   // 0.0 to 1.0
+};
+
+struct FillEvent {
+    uint64_t timestamp;
+    double fill_price;
+    double fill_qty;
+    double commission;
+};
+
+struct StrategyMetrics {
+    double total_pnl;
+    double win_rate;
+    double max_drawdown;
+};
+</code></pre>
+</div>
+<p>These <code>struct</code> blocks are just simple data containers. Think of them like Python <code>@dataclass</code> or dictionaries, but much faster because they take up an exact, predictable amount of memory.</p>
+
+<div class="code-explanation">
+<pre><code class="language-cpp">// --- The Interface ---
+
+class StrategyInterface {
+public:
+    // A virtual destructor is required for safe cleanup
+    virtual ~StrategyInterface() = default;
+
+    // The core function: given a market event, what is your signal?
+    virtual SignalEvent on_market_event(const MarketEvent&amp; event) = 0;
+
+    // Called when an order is executed
+    virtual void on_fill(const FillEvent&amp; event) = 0;
+
+    // Request the strategy's current internal metrics
+    virtual StrategyMetrics get_metrics() const = 0;
+};
+
+// --- The USB Plug ---
+// This is the function that the engine will look for when loading the .so file
+extern "C" StrategyInterface* create_strategy();
+extern "C" void destroy_strategy(StrategyInterface* strategy);
+</code></pre>
+</div>
+<p><strong>Why this design?</strong> This is the <strong>Plugin Architecture</strong>. The engine doesn't care if the strategy uses moving averages, neural networks, or a magic 8-ball. All the engine cares about is that it can call <code>on_market_event()</code> and get back a <code>SignalEvent</code>. The <code>create_strategy()</code> function wrapped in <code>extern "C"</code> is the exact hook the engine searches for when it uses <code>dlopen()</code> to plug the strategy in.</p>
+
+<hr />
+
+<h3 id="columnartickstore-zero-copy-data-access">ColumnarTickStore — Zero-Copy Data Access</h3>
+
+<p>When you have 10 years of tick data (millions of rows), how do you read it fast? Python's pandas is okay, but it copies data into memory. We want <strong>Zero-Copy</strong>.</p>
+
+<h4 id="row-vs-column-storage">Row-oriented vs Column-oriented storage</h4>
+<div class="analogy">
+  <strong>Analogy:</strong> Imagine a spreadsheet of employees with columns: [Name, Age, Department].
+  <ul>
+    <li><strong>Row-oriented:</strong> Reading row by row (John, 30, HR -&gt; Jane, 45, IT). If you only want to find the average Age, you still have to step over all the Names and Departments.</li>
+    <li><strong>Column-oriented:</strong> The data is stored in columns (John, Jane) (30, 45) (HR, IT). If you want the average age, you just grab the (30, 45) chunk. It's incredibly fast!</li>
+  </ul>
+</div>
+
+<h4 id="memory-mapping-mmap">What is memory mapping (mmap)?</h4>
+<div class="key-concept">
+  <strong>mmap</strong> is an operating system trick. Instead of reading a file from the hard drive into RAM (which takes time), mmap tricks the CPU into thinking the hard drive file <em>is</em> in RAM. As your program accesses variables, the OS secretly fetches chunks of the file in the background. No loading screens, no copying!
+</div>
+
+Let's look at the C++ code that does this:
+
+<div class="code-explanation">
+<pre><code class="language-cpp">#include &lt;sys/mman.h&gt;
+#include &lt;fcntl.h&gt;
+#include &lt;unistd.h&gt;
+
+class ColumnarTickStore {
+private:
+    double* prices_array;
+    size_t num_ticks;
+    int file_descriptor;
+
+public:
+    ColumnarTickStore(const char* filepath) {
+        // 1. Open the file directly
+        file_descriptor = open(filepath, O_RDONLY);
+        
+        // 2. Figure out how big it is
+        size_t file_size = lseek(file_descriptor, 0, SEEK_END);
+        num_ticks = file_size / sizeof(double);
+        
+        // 3. mmap: Map the file directly into memory space!
+        prices_array = (double*) mmap(
+            nullptr,              // Let the OS pick the memory address
+            file_size,            // Size of the file
+            PROT_READ,            // We only want to read, not write
+            MAP_SHARED,           // Share this mapping
+            file_descriptor,      // The file we opened
+            0                     // Start at the beginning
+        );
+    }
+    
+    // Get a price instantly, as if it was a normal array in RAM
+    inline double get_price(size_t index) const {
+        return prices_array[index];
+    }
+};
+</code></pre>
+</div>
+
+<h4 id="what-is-prefetching">What is prefetching?</h4>
+<div class="analogy">
+  <strong>Analogy:</strong> You are eating at a multi-course dinner. <strong>Prefetching</strong> is the waiter noticing you are almost done with your soup, and bringing the main course out so it's sitting next to you exactly when you finish the soup. No waiting!
+</div>
+<p>In C++, we can tell the CPU: <em>"Hey, I'm currently looking at tick 1,000. In a microsecond, I'm going to need tick 1,010. Go fetch it from RAM into your ultra-fast L1 cache right now."</em> We do this using <code>__builtin_prefetch(&amp;prices_array[index + 10]);</code>.</p>
+
+<hr />
+
+<h3 id="backtestengine-the-main-event-loop">BacktestEngine — The Main Event Loop</h3>
+
+<p>The <code>BacktestEngine</code> is the heart of the C++ worker. It loops through all the historical data, feeds it to the strategy, and records the results.</p>
+
+<div class="code-explanation">
+<pre><code class="language-cpp">#include &lt;dlfcn.h&gt; // For dlopen
+
+class BacktestEngine {
+    void run(const std::string&amp; strategy_so_path) {
+        // 1. Plug in the strategy using dlopen
+        void* handle = dlopen(strategy_so_path.c_str(), RTLD_NOW);
+        
+        // 2. Find the "create_strategy" function
+        auto create_func = (StrategyInterface* (*)()) dlsym(handle, "create_strategy");
+        
+        // 3. Create the strategy object
+        StrategyInterface* strategy = create_func();
+        
+        // 4. Batch Processing Loop
+        const size_t BATCH_SIZE = 4096;
+        for (size_t i = 0; i &lt; total_ticks; i += BATCH_SIZE) {
+            
+            for (size_t j = 0; j &lt; BATCH_SIZE; ++j) {
+                size_t idx = i + j;
+                if (idx &gt;= total_ticks) break;
+
+                // Create the event
+                MarketEvent event;
+                event.tick.price = tick_store.get_price(idx);
+                
+                // Prefetch future data to speed up memory access
+                __builtin_prefetch(&amp;tick_store.get_price(idx + 16), 0, 1);
+
+                // 5. Ask the strategy for a decision
+                SignalEvent signal = strategy-&gt;on_market_event(event);
+                
+                // 6. Execute the decision in the simulator
+                simulator.process_signals(signal, event.tick);
+            }
+        }
+    }
+};
+</code></pre>
+</div>
+
+<p><strong>Why batches of 4096?</strong> CPUs love patterns and predictable chunks. A batch of 4096 fits perfectly into most CPU caches. If we process one by one entirely, we might interrupt the CPU's rhythm. By processing in chunks, the CPU can optimize its pipeline.</p>
+
+<p><strong>Latency Sampling:</strong> We occasionally measure how long it takes to process a tick. <em>Why not measure every tick?</em> Because checking the clock (calling time functions) takes time! If you measure every tick, the act of measuring actually slows down the engine. We only sample every 1,000th tick to keep things fast.</p>
+
+<hr />
+
+<h3 id="ordermatchingsimulator-realistic-trade-execution">OrderMatchingSimulator — Realistic Trade Execution</h3>
+
+<p>When our strategy says "BUY", we don't just magically get the stock for free. A backtester is useless if it's not realistic. The <code>OrderMatchingSimulator</code> applies real-world physics to our trades.</p>
+
+<div class="key-concept">
+  <strong>Slippage:</strong> Imagine ordering a TV online for $500, but by the time you click "Checkout", the price jumps to $505. That $5 difference is slippage. In fast markets, by the time your order reaches the exchange, the price has moved.<br/><br/>
+  <strong>Commission:</strong> The fee the broker charges you for doing the trade (e.g., $0.001 per share).
+</div>
+
+<p><strong>Market vs Limit Orders:</strong></p>
+<ul>
+  <li><strong>Market Order:</strong> "Buy this stock right now, whatever the price is!" (Guarantees execution, subject to heavy slippage).</li>
+  <li><strong>Limit Order:</strong> "Only buy this stock if the price is $100 or less." (Guarantees price, but might never execute if the price doesn't drop).</li>
+</ul>
+
+<div class="code-explanation">
+<pre><code class="language-cpp">void process_signals(const SignalEvent&amp; signal, const Tick&amp; tick) {
+    if (signal.signal == 1) { // BUY
+        // Calculate realistic fill price (simulating slippage)
+        // We add a tiny bit (0.01%) to the price to simulate getting a bad fill
+        double slippage_penalty = tick.price * 0.0001; 
+        double fill_price = tick.price + slippage_penalty;
+        
+        // Calculate broker fee
+        double commission = 0.50; // Flat fee per trade
+        
+        // Execute!
+        portfolio_cash -= (fill_price * 100) + commission; // Bought 100 shares
+        positions += 100;
+        
+        // Tell the strategy it was filled
+        FillEvent fill{tick.timestamp, fill_price, 100.0, commission};
+        strategy-&gt;on_fill(fill);
+    }
+}
+</code></pre>
+</div>
+
+<hr />
+
+<h3 id="simdmetrics-simd-acceleration">SimdMetrics — SIMD Acceleration</h3>
+
+<p>To calculate things like Variance or Moving Averages across millions of data points, standard loops are too slow. We use <strong>SIMD</strong> (Single Instruction, Multiple Data).</p>
+
+<div class="analogy">
+  <strong>Analogy:</strong> Standard C++ loop is like a checkout lane at a grocery store. The cashier scans one item at a time (Apple, then Banana, then Orange). <br/>
+  <strong>SIMD</strong> is like a super-cashier with 4 arms who grabs 4 items and scans them all at the exact same millisecond. 
+</div>
+
+<p>Modern Intel/AMD CPUs have a feature called <strong>AVX2</strong>. This gives the CPU massive 256-bit registers. Since a standard <code>double</code> decimal number is 64 bits long, 256 / 64 = 4. We can cram 4 numbers into one register and do math on all 4 simultaneously!</p>
+
+<p>Let's look at how we sum up an array incredibly fast using SIMD C++ intrinsics:</p>
+
+<div class="code-explanation">
+<pre><code class="language-cpp">#include &lt;immintrin.h&gt; // The AVX2 header
+
+double sum_avx2(const double* data, size_t length) {
+    // 1. Create a 256-bit register initialized to all zeros. [0.0, 0.0, 0.0, 0.0]
+    __m256d sum_vec = _mm256_setzero_pd();
+    
+    size_t i = 0;
+    // 2. Loop in chunks of 4!
+    for (; i + 3 &lt; length; i += 4) {
+        // Load 4 numbers from our array directly into a 256-bit register
+        __m256d data_vec = _mm256_loadu_pd(&amp;data[i]);
+        
+        // ADD all 4 numbers to our sum_vec simultaneously in one CPU cycle
+        sum_vec = _mm256_add_pd(sum_vec, data_vec);
+    }
+    
+    // 3. We now have 4 separate totals. We need to add them together.
+    double temp[4];
+    _mm256_storeu_pd(temp, sum_vec);
+    double total_sum = temp[0] + temp[1] + temp[2] + temp[3];
+    
+    // 4. The Scalar Fallback: What if the array length wasn't a perfect multiple of 4?
+    // E.g., length 10. SIMD does 8. We do the last 2 the normal, slow way.
+    for (; i &lt; length; ++i) {
+        total_sum += data[i];
+    }
+    
+    return total_sum;
+}
+</code></pre>
+</div>
+
+<h4 id="fused-multiply-add-fmadd">What is _mm256_fmadd_pd?</h4>
+<p>When calculating Variance, the math is roughly <code>(price - mean)^2</code>. You have to multiply, and then add. CPUs have a special hardware circuit called Fused Multiply-Add (FMA). The instruction <code>_mm256_fmadd_pd(a, b, c)</code> calculates <code>(a * b) + c</code> in a single lightning-fast step, avoiding rounding errors.</p>
+
+<hr />
+
+<h3 id="cmakelists-txt-the-build-system">CMakeLists.txt — The Build System</h3>
+
+<p>Finally, how do we turn all this C++ text into an executable program? Python just runs via the Python interpreter. C++ must be compiled.</p>
+
+<div class="analogy">
+  <strong>Analogy:</strong> <code>CMake</code> is the recipe for building your project. It tells the kitchen (the compiler) exactly which files to compile, what folders to look in, and what compiler flags (optimizations) to turn on.
+</div>
+
+<div class="code-explanation">
+<pre><code class="language-cmake"># 1. Require a modern version of CMake
+cmake_minimum_required(VERSION 3.10)
+
+# 2. Name our project
+project(BacktestEngine)
+
+# 3. Use C++17 standard (modern C++)
+set(CMAKE_CXX_STANDARD 17)
+
+# 4. Compiler Flags: Turn on MAX SPEED!
+# -O3 tells the compiler to optimize the code as heavily as possible.
+# -mavx2 and -mfma tell the compiler "This CPU supports AVX2 and Fused-Multiply-Add, use them!"
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -mavx2 -mfma -Wall")
+
+# 5. Build our Main Executable Engine from our source files
+add_executable(engine 
+    src/main.cpp 
+    src/BacktestEngine.cpp
+)
+
+# 6. Link dynamic loading library (-ldl) so dlopen() works
+target_link_libraries(engine dl)
+</code></pre>
+</div>
+
+<p>And that's it! You've just walked through advanced C++ concepts—memory mapping, plugin architectures, and SIMD CPU intrinsics—from first principles. This C++ engine gives our Swarm AI the raw horsepower it needs to backtest thousands of complex strategies per minute.</p>

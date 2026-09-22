@@ -41,6 +41,9 @@ services:
     build:
       context: ./orchestrator
       dockerfile: Dockerfile
+    command: ["uvicorn", "swarm_orchestrator.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -52,6 +55,7 @@ services:
       MONGODB_URL: mongodb://mongodb:27017/trading_swarm
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o}
       LLM_TEMPERATURE: "0.0"
