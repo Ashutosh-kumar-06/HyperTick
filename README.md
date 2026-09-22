@@ -1,7 +1,7 @@
 <div align="center">
   <img src="https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/zap.svg" width="90" height="90" alt="HyperTick Icon"/>
   <h1>HyperTick</h1>
-  <p><b>Distributed Microsecond Backtesting & High-Frequency Simulation Engine</b></p>
+  <p><b>Distributed Microsecond Backtesting & High-Frequency Quantitative Simulation Engine</b></p>
   
   [![C++](https://img.shields.io/badge/C%2B%2B-20-purple.svg)](https://isocpp.org/)
   [![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://python.org)
@@ -10,6 +10,7 @@
   [![RabbitMQ](https://img.shields.io/badge/RabbitMQ-AMQP%20QoS-orange.svg)](https://www.rabbitmq.com/)
   [![Redis](https://img.shields.io/badge/Redis-CRDT%20LWW--Register-darkred.svg)](https://redis.io/)
   [![React](https://img.shields.io/badge/React-19-61DAFB.svg)](https://reactjs.org/)
+  [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 </div>
 
 <hr/>
@@ -23,7 +24,7 @@ Historical tick datasets are streamed with **zero-copy memory mapping (`mmap`) v
 ### Key System Metrics
 * **Peak Engine Throughput:** `2.2M+ ticks / sec` (Single Worker Core)
 * **Average Execution Latency:** `~1.15 µs` / tick (P99: `< 0.3 µs`)
-* **Vectorized Post-Processing:** Parallel AVX2 / FMA SIMD Sharpe & variance reduction
+* **Vectorized Post-Processing:** Parallel AVX2 / FMA SIMD Sharpe ratio & variance reduction
 * **Sandbox Security:** Ephemeral Docker sandboxing with strict cgroups quotas (`0.5 CPU`, `512MB RAM`, `network: none`)
 * **Distributed Synchronization:** Lock-free Redis Conflict-Free Replicated Data Types (CRDTs: LWW-Registers, OR-Sets)
 
@@ -50,7 +51,7 @@ graph TD;
 1. **Low-Latency C++20 Core (`worker/`):**
    * **`ColumnarTickStore`:** Memory-maps Arrow record batches using Structure-of-Arrays (SoA) layout.
    * **`BacktestEngine`:** Monolithic hot event loop (`Tick → Market → Strategy → Signal → OMS → Fill`) with batch prefetching.
-   * **`OrderMatchingSimulator`:** Simulates queue priority, market/limit orders, configurable basis-point commissions, and slippage.
+   * **`OrderMatchingSimulator`:** Simulates queue priority, market/limit orders, configurable basis-point commissions, slippage, and capital accounting.
    * **`SimdMetrics`:** Vectorized reduction routines computing sum, variance, Sharpe ratio, and maximum drawdown via 256-bit AVX2 registers.
 2. **Distributed Queue & Sandbox Consumer (`consumer/`):**
    * Listens on RabbitMQ with `prefetch=1` backpressure.
@@ -61,7 +62,7 @@ graph TD;
    * Self-correcting feedback mechanism: If Sharpe ratio or drawdown fail KPI constraints, reflection notes feed back into the synthesis engine.
    * Redis-backed CRDTs (LWW-Registers and Observed-Remove Sets) maintain multi-node eventual consistency without locking.
 4. **Interactive Dashboard (`frontend/`):**
-   * Sleek glassmorphic web dashboard to trigger backtests, inspect live agent iteration logs, and review generated C++ code.
+   * Minimalist dotted-white UI with elevated shadow cards to trigger backtests, inspect live agent iteration logs, and review full-length C++ code.
 
 ---
 
@@ -74,6 +75,30 @@ graph TD;
 | **AVX2 SIMD Vectorization** | `SimdMetrics.hpp` | Computes returns variance across 4 doubles per cycle using FMA instructions. |
 | **Dynamic Shared Library Linking** | `sandbox.py` + `dlopen` | Avoids recompiling the entire engine; dynamically loads strategy plugins in milliseconds. |
 | **Distributed Backpressure** | `RabbitMQ (prefetch=1)` | Prevents worker starvation and memory exhaustion under concurrent submission bursts. |
+
+---
+
+## 📂 Repository Structure
+
+```text
+HyperTick/
+├── data/                      # Sample datasets (sample_spy_ticks.arrow)
+├── worker/                    # High-throughput C++20 simulation core
+│   ├── include/               # StrategyInterface, BacktestEngine, OMS, SIMD headers
+│   ├── src/                   # OrderMatchingSimulator, ColumnarTickStore, main
+│   ├── strategies/            # Example quantitative strategies (e.g. Bollinger bands)
+│   └── CMakeLists.txt         # Release build flags (-O3, -mavx2, -mfma)
+├── consumer/                  # Distributed execution worker (RabbitMQ → Docker sandbox)
+│   └── src/swarm_consumer/    # Task consumer and sandbox process isolation
+├── orchestrator/              # LangGraph multi-agent orchestration & FastAPI service
+│   ├── src/swarm_orchestrator/
+│   │   ├── nodes/             # Researcher, Coder, Evaluator nodes
+│   │   ├── broker/            # Redis CRDT state synchronization & RabbitMQ client
+│   │   └── api.py             # REST API endpoints
+├── frontend/                  # React 19 + TypeScript + Vite web dashboard
+├── scripts/                   # Data ingestion tools (CSV/Parquet → Arrow IPC)
+└── docker-compose.yml         # Multi-service infrastructure orchestration
+```
 
 ---
 
@@ -108,6 +133,29 @@ npm install
 npm run dev
 ```
 Navigate to **[http://localhost:5173](http://localhost:5173)** to access the dashboard.
+
+---
+
+## 📡 API Reference
+
+### Health Check
+```bash
+curl http://localhost:8000/api/health
+```
+```json
+{"status": "ok", "llm_provider": "groq"}
+```
+
+### Execute Backtest Strategy
+```bash
+curl -X POST http://localhost:8000/api/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Bollinger Bands mean reversion with 2-std-dev threshold on SPY",
+    "dataset_id": "sample_spy_ticks",
+    "max_iterations": 2
+  }'
+```
 
 ---
 
