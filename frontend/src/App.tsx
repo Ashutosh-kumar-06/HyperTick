@@ -29,7 +29,6 @@ function App() {
     setResult(null);
     
     try {
-      // Pointing to local FastAPI server we just built
       const res = await axios.post('http://localhost:8000/api/run', {
         prompt,
         dataset_id: 'sample_spy_ticks.arrow',
@@ -53,8 +52,8 @@ function App() {
       {/* Input Section */}
       <section className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-blue)' }}>
-          <BrainCircuit size={24} />
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Strategy Hypothesis</h2>
+          <BrainCircuit size={22} />
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>Strategy Hypothesis</h2>
         </div>
         <div className="input-group">
           <input 
@@ -71,13 +70,24 @@ function App() {
             disabled={isRunning}
           >
             {isRunning ? (
-              <><Activity size={20} className="animate-spin" /> Synthesizing...</>
+              <><Activity size={18} className="animate-spin" /> Synthesizing...</>
             ) : (
-              <><Play size={20} /> Execute</>
+              <><Play size={18} fill="currentColor" /> Execute</>
             )}
           </button>
         </div>
-        {error && <div style={{ color: '#ef4444', marginTop: '8px' }}>{error}</div>}
+        {error && (
+          <div style={{
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            color: '#b91c1c',
+            padding: '12px 16px',
+            borderRadius: '10px',
+            fontSize: '0.95rem'
+          }}>
+            {error}
+          </div>
+        )}
       </section>
 
       {/* Results Dashboard Grid */}
@@ -87,33 +97,54 @@ function App() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <section className="glass-panel" style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-purple)', marginBottom: '16px' }}>
-              <Terminal size={24} />
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Agent Logs</h2>
+              <Terminal size={22} />
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>Agent Logs</h2>
             </div>
             
             {result ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {result.iteration_log.map((log, i) => (
                   <div key={i} style={{ 
-                    padding: '12px', 
-                    background: 'rgba(0,0,0,0.4)', 
+                    padding: '12px 14px', 
+                    background: '#f8fafc', 
                     borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
                     borderLeft: `4px solid ${log.includes('evaluator') ? '#ef4444' : '#3b82f6'}`,
                     fontFamily: 'JetBrains Mono',
-                    fontSize: '0.9rem',
-                    color: '#e2e8f0'
+                    fontSize: '0.88rem',
+                    color: '#1e293b',
+                    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.02)'
                   }}>
                     {log}
                   </div>
                 ))}
                 
-                <div style={{ marginTop: '16px' }}>
-                  <h3 style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '8px' }}>Reflection Notes:</h3>
-                  <p style={{ color: '#fca5a5', fontSize: '0.95rem' }}>{result.reflection_notes || 'No reflections.'}</p>
+                <div style={{
+                  marginTop: '16px',
+                  padding: '14px 16px',
+                  background: result.approved ? '#ecfdf5' : '#fff1f2',
+                  borderRadius: '10px',
+                  border: `1px solid ${result.approved ? '#a7f3d0' : '#ffe4e6'}`
+                }}>
+                  <h3 style={{
+                    color: result.approved ? '#065f46' : '#9f1239',
+                    fontSize: '0.88rem',
+                    fontWeight: 600,
+                    marginBottom: '4px'
+                  }}>
+                    Reflection Notes:
+                  </h3>
+                  <p style={{
+                    color: result.approved ? '#047857' : '#be123c',
+                    fontSize: '0.92rem',
+                    lineHeight: 1.5
+                  }}>
+                    {result.reflection_notes || 'No reflections.'}
+                  </p>
                 </div>
               </div>
             ) : (
-              <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '40px 0' }}>
+              <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '60px 0', fontSize: '0.95rem' }}>
                 Awaiting strategy execution...
               </div>
             )}
@@ -123,9 +154,9 @@ function App() {
         {/* Right Column: Code & Metrics */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <section className="glass-panel" style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', marginBottom: '16px' }}>
-              <BarChart3 size={24} />
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Generated C++ Worker</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#059669', marginBottom: '16px' }}>
+              <BarChart3 size={22} />
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)' }}>Generated C++ Worker</h2>
             </div>
             
             {result ? (
@@ -133,12 +164,13 @@ function App() {
                 <div style={{ marginBottom: '16px' }}>
                   <span style={{ 
                     display: 'inline-block', 
-                    padding: '4px 12px', 
-                    borderRadius: '16px', 
+                    padding: '6px 14px', 
+                    borderRadius: '20px', 
                     fontSize: '0.85rem',
-                    background: result.approved ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                    color: result.approved ? '#34d399' : '#f87171',
-                    border: `1px solid ${result.approved ? '#34d399' : '#f87171'}`
+                    fontWeight: 600,
+                    background: result.approved ? '#ecfdf5' : '#fff1f2',
+                    color: result.approved ? '#059669' : '#e11d48',
+                    border: `1px solid ${result.approved ? '#a7f3d0' : '#fecdd3'}`
                   }}>
                     Status: {result.approved ? 'APPROVED' : 'REJECTED'} ({result.outcome.split(' ')[1] || 'timeout'})
                   </span>
@@ -149,7 +181,7 @@ function App() {
                 </pre>
               </>
             ) : (
-              <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '40px 0' }}>
+              <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '60px 0', fontSize: '0.95rem' }}>
                 Code will appear here once synthesized.
               </div>
             )}
